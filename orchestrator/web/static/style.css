@@ -1283,6 +1283,14 @@ code {
 
 /* Register page (unchanged structure, shared tokens) */
 .register-page { max-width: 560px; margin-top: 2rem; }
+.modal-card-wide { width: min(920px, 96vw); max-width: 96vw; }
+.code-block {
+  width: 100%;
+  font-family: ui-monospace, "Cascadia Code", monospace;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  resize: vertical;
+}
 .registration-id-box {
   margin: 1rem 0;
   padding: 1rem;

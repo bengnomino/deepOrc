@@ -25,6 +25,7 @@ from orchestrator.repositories.gateway_repo import GatewayRepository
 from orchestrator.repositories.job_repo import JobRepository
 from orchestrator.repositories.metrics_repo import MetricsRepository
 from orchestrator.repositories.peer_repo import PeerRepository
+from orchestrator.services.exit_host_script_service import ExitHostScriptService
 from orchestrator.services.gateway_service import CreateGatewayRequest, GatewayService
 from orchestrator.services.peer_group_service import CreatePeerGroupRequest, PeerGroupService
 from orchestrator.services.peer_service import PeerService
@@ -303,6 +304,10 @@ def peer_group_detail(
     if not group:
         return RedirectResponse(url="/orchestrator/ui", status_code=303)
     gateways = [g for g in GatewayRepository(session).list_all() if g.peer_group_id == group_id]
+    try:
+        _, host_setup_script = ExitHostScriptService(session).build_setup_script(group_id)
+    except ValueError:
+        host_setup_script = ""
     return templates.TemplateResponse(
         request,
         "peer_group_detail.html",
@@ -311,9 +316,24 @@ def peer_group_detail(
             "group": group,
             "gateways": gateways,
             "lan_remaining": remaining_lan_capacity(session, group),
+            "host_setup_script": host_setup_script,
             "flash_error": error,
             "flash_ok": ok,
         },
+    )
+
+
+@router.get("/peer-groups/{group_id}/host-setup.sh", response_class=PlainTextResponse)
+def download_peer_group_host_setup(group_id: int, session: DbSession) -> PlainTextResponse:
+    try:
+        group, script = ExitHostScriptService(session).build_setup_script(group_id)
+    except ValueError as exc:
+        return PlainTextResponse(str(exc), status_code=404)
+    filename = f"{group.name}-host-setup.sh"
+    return PlainTextResponse(
+        script,
+        media_type="text/x-shellscript",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 

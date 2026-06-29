@@ -6,6 +6,12 @@
     <span class="muted">/</span>
     <h1>{{ group.name }}</h1>
   </div>
+  <div class="header-actions">
+    {% if gateways %}
+    <button type="button" class="btn btn-glow" id="btn-host-setup">Exit host script</button>
+    <a href="/orchestrator/ui/peer-groups/{{ group.id }}/host-setup.sh" class="btn btn-ghost">Download .sh</a>
+    {% endif %}
+  </div>
 </header>
 
 {% if flash_error %}
@@ -69,4 +75,72 @@
   <p class="muted">No gateways in this group yet.</p>
   {% endif %}
 </section>
+
+{% if gateways and host_setup_script %}
+<dialog id="host-setup-modal" class="modal">
+  <div class="modal-card modal-card-wide">
+    <div class="modal-header">
+      <h2>Exit host setup</h2>
+      <button type="button" class="btn btn-icon modal-close" id="host-setup-modal-close" aria-label="Close">✕</button>
+    </div>
+    <p class="muted">Run on the EXIT VM as root. Creates macvlan + WireGuard per gateway in this group.</p>
+    <textarea id="host-setup-script" rows="18" readonly class="text-input code-block">{{ host_setup_script }}</textarea>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-glow" id="host-setup-copy">Copy script</button>
+      <button type="button" class="btn btn-ghost" id="host-setup-close">Close</button>
+    </div>
+  </div>
+</dialog>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if gateways and host_setup_script %}
+<script>
+(() => {
+  const modal = document.getElementById("host-setup-modal");
+  const scriptEl = document.getElementById("host-setup-script");
+  const openBtn = document.getElementById("btn-host-setup");
+  const closeBtn = document.getElementById("host-setup-modal-close");
+  const closeAlt = document.getElementById("host-setup-close");
+  const copyBtn = document.getElementById("host-setup-copy");
+
+  function openModal() {
+    if (modal) modal.showModal();
+  }
+  function closeModal() {
+    if (modal) modal.close();
+  }
+
+  openBtn?.addEventListener("click", openModal);
+  closeBtn?.addEventListener("click", closeModal);
+  closeAlt?.addEventListener("click", closeModal);
+  modal?.addEventListener("click", (event) => {
+    const rect = modal.getBoundingClientRect();
+    const inDialog =
+      event.clientX >= rect.left &&
+      event.clientX <= rect.right &&
+      event.clientY >= rect.top &&
+      event.clientY <= rect.bottom;
+    if (!inDialog) closeModal();
+  });
+
+  copyBtn?.addEventListener("click", async () => {
+    const text = scriptEl?.value || "";
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        scriptEl?.select();
+        document.execCommand("copy");
+      }
+      copyBtn.textContent = "Copied";
+      setTimeout(() => { copyBtn.textContent = "Copy script"; }, 2000);
+    } catch {
+      scriptEl?.select();
+    }
+  });
+})();
+</script>
+{% endif %}
 {% endblock %}
