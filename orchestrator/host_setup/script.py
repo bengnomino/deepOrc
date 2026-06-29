@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import base64
+import ipaddress
 import re
 
 from orchestrator.lan.ipam import default_lan_gateway
@@ -17,17 +19,44 @@ def wg_interface_name(gateway_name: str) -> str:
     return base[:15]
 
 
+def _lan_prefix_len(group: PeerGroup) -> int:
+    return ipaddress.ip_network(group.lan_subnet, strict=False).prefixlen
+
+
+def _valid_wg_conf(conf: str | None) -> bool:
+    if not conf or not conf.strip():
+        return False
+    return "[Interface]" in conf and "[Peer]" in conf and "PrivateKey" in conf
+
+
+def _write_wg_conf_lines(conf_path: str, wg_if: str, wg_conf: str) -> list[str]:
+    """Embed WireGuard config via base64 (safe for copy-paste; no heredoc delimiter issues)."""
+    var = f"DEEPORC_B64_{wg_if.replace('-', '_').upper()}"
+    encoded = base64.b64encode(wg_conf.strip().encode()).decode("ascii")
+    return [
+        f"mkdir -p \"${{WG_CONF_DIR}}\"",
+        f'{var}="{encoded}"',
+        f'printf "%s" "${{{var}}}" | base64 -d > "{conf_path}"',
+        f"chmod 600 \"{conf_path}\"",
+    ]
+
+
 def render_exit_host_script(
     group: PeerGroup,
     entries: list[tuple[Gateway, str | None]],
 ) -> str:
     parent = group.parent_iface or "ens18"
     lan_gw = group.lan_gateway or default_lan_gateway(group.lan_subnet)
+    prefix_len = _lan_prefix_len(group)
+    ready_count = sum(
+        1 for gw, conf in entries if gw.status == GatewayStatus.READY and _valid_wg_conf(conf)
+    )
 
     lines = [
         "#!/usr/bin/env bash",
-        "# deepOrc exit host — peer group: " + group.name,
-        "# Run as root on the EXIT VM (no sudo). Adjust PARENT_IFACE if needed.",
+        f"# deepOrc exit host — peer group: {group.name}",
+        f"# Gateways in group: {len(entries)} ({ready_count} with WireGuard config)",
+        "# Run as root on the EXIT VM (no sudo). Prefer downloading this file — do not copy from the browser modal for large groups.",
         "set -euo pipefail",
         "",
         f'PARENT_IFACE="${{PARENT_IFACE:-{parent}}}"',
@@ -41,6 +70,7 @@ def render_exit_host_script(
         "sysctl -w net.ipv4.conf.all.arp_ignore=1",
         "sysctl -w net.ipv4.conf.all.arp_announce=2",
         "",
+        "mkdir -p /etc/iproute2",
         'grep -q "^200 deeporc" /etc/iproute2/rt_tables 2>/dev/null || echo "200 deeporc" >> /etc/iproute2/rt_tables',
         "",
     ]
@@ -60,44 +90,43 @@ def render_exit_host_script(
         wg_if = wg_interface_name(gateway.name)
         table = slot
         lan_ip = gateway.lan_ip
+        conf_path = f"${{WG_CONF_DIR}}/{wg_if}.conf"
 
-        lines += [
+        block = [
             f"echo '==> {gateway.name} ({lan_ip} / {mac})'",
             f"ip link del {mac} 2>/dev/null || true",
             f"ip link add {mac} link \"${{PARENT_IFACE}}\" type macvlan mode bridge",
-            f"ip addr add {lan_ip}/24 dev {mac}",
+            f"ip addr add {lan_ip}/{prefix_len} dev {mac}",
             f"ip link set {mac} up",
-            "",
             f"grep -q '^{table} ' /etc/iproute2/rt_tables 2>/dev/null || echo '{table} deeporc-{slot}' >> /etc/iproute2/rt_tables",
             f"ip route replace default via \"${{LAN_GW}}\" dev {mac} table {table}",
             f"ip rule del iif {wg_if} lookup {table} 2>/dev/null || true",
-            "",
         ]
 
-        if gateway.status != GatewayStatus.READY or not wg_conf:
-            lines += [
-                f"echo '  skip WireGuard: {gateway.name} not ready or missing backhaul peer' >&2",
-                "",
+        if gateway.status != GatewayStatus.READY:
+            block.append(
+                f"echo '  skip WireGuard: {gateway.name} status={gateway.status.value} (wait for ready in UI)' >&2"
+            )
+        elif not _valid_wg_conf(wg_conf):
+            block.append(
+                f"echo '  skip WireGuard: {gateway.name} missing or incomplete backhaul peer config' >&2"
+            )
+        else:
+            block += _write_wg_conf_lines(conf_path, wg_if, wg_conf or "")
+            block += [
+                f"wg-quick down {wg_if} 2>/dev/null || true",
+                f"wg-quick up {wg_if}",
+                f"ip rule add iif {wg_if} lookup {table}",
+                f"iptables -C FORWARD -i {wg_if} -o {mac} -j ACCEPT 2>/dev/null || "
+                f"iptables -A FORWARD -i {wg_if} -o {mac} -j ACCEPT",
+                f"iptables -C FORWARD -i {mac} -o {wg_if} -m state --state RELATED,ESTABLISHED -j ACCEPT 2>/dev/null || "
+                f"iptables -A FORWARD -i {mac} -o {wg_if} -m state --state RELATED,ESTABLISHED -j ACCEPT",
+                f"iptables -t nat -C POSTROUTING -o {mac} -j MASQUERADE 2>/dev/null || "
+                f"iptables -t nat -A POSTROUTING -o {mac} -j MASQUERADE",
             ]
-            continue
 
-        conf_path = f"${{WG_CONF_DIR}}/{wg_if}.conf"
-        lines += [
-            f"mkdir -p \"${{WG_CONF_DIR}}\"",
-            f"cat > {conf_path} <<'DEEPORC_WG_EOF'",
-            wg_conf.rstrip(),
-            "DEEPORC_WG_EOF",
-            f"wg-quick down {wg_if} 2>/dev/null || true",
-            f"wg-quick up {wg_if}",
-            f"ip rule add iif {wg_if} lookup {table}",
-            f"iptables -C FORWARD -i {wg_if} -o {mac} -j ACCEPT 2>/dev/null || "
-            f"iptables -A FORWARD -i {wg_if} -o {mac} -j ACCEPT",
-            f"iptables -C FORWARD -i {mac} -o {wg_if} -m state --state RELATED,ESTABLISHED -j ACCEPT 2>/dev/null || "
-            f"iptables -A FORWARD -i {mac} -o {wg_if} -m state --state RELATED,ESTABLISHED -j ACCEPT",
-            f"iptables -t nat -C POSTROUTING -o {mac} -j MASQUERADE 2>/dev/null || "
-            f"iptables -t nat -A POSTROUTING -o {mac} -j MASQUERADE",
-            "",
-        ]
+        lines.append(f"({'; '.join(block)}) || echo 'FAILED: {gateway.name}' >&2")
+        lines.append("")
 
     lines += ["echo 'Done.'"]
     return "\n".join(lines) + "\n"
@@ -107,10 +136,9 @@ def render_exit_host_teardown_script(
     group: PeerGroup,
     gateways: list[Gateway],
 ) -> str:
-    parent = group.parent_iface or "ens18"
     lines = [
         "#!/usr/bin/env bash",
-        "# Tear down deepOrc exit host — peer group: " + group.name,
+        f"# Tear down deepOrc exit host — peer group: {group.name}",
         "set -euo pipefail",
         "",
     ]
