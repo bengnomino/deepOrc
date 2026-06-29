@@ -4,9 +4,10 @@
   <div class="hero-breadcrumb">
     <a href="/orchestrator/ui" class="muted">Dashboard</a>
     <span class="muted">/</span>
-    <h1>{{ gateway.name }}</h1>
+    <h1>{{ display_name }}</h1>
     <span class="status-pill status-{{ gateway.status.value }}">{{ gateway.status.value }}</span>
   </div>
+  <p class="muted object-id">ID oggetto: <code>{{ gateway.name }}</code></p>
 </header>
 
 {% if flash_error %}
@@ -70,8 +71,22 @@
     </dl>
 
     <h3 class="section-sub">Exit node Tailscale</h3>
+    {% if gateway.status.value == 'ready' %}
+    <form method="post" action="/orchestrator/ui/gateways/{{ gateway.id }}/tailscale-name" class="rename-form">
+      <label class="field-label" for="tailscale-hostname-input">Nome Headscale</label>
+      <div class="rename-form-row">
+        <input type="text" id="tailscale-hostname-input" class="text-input" name="tailscale_hostname"
+               value="{{ gateway.tailscale_hostname }}" required autocomplete="off" spellcheck="false"
+               pattern="[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?"
+               title="Lettere, cifre e trattini">
+        <button type="submit" class="btn btn-sm">Rinomina</button>
+      </div>
+      <p class="muted rename-form-hint">ID oggetto <code>{{ gateway.name }}</code> resta invariato</p>
+    </form>
+    {% endif %}
     <dl class="meta-list vertical">
-      <div><dt>Ruolo</dt><dd>Questo gateway <strong>è</strong> l'exit node (<code>{{ gateway.name }}</code>)</dd></div>
+      <div><dt>ID oggetto</dt><dd><code>{{ gateway.name }}</code></dd></div>
+      <div><dt>Ruolo</dt><dd>Exit node del cluster</dd></div>
       {% if gateway.exit_node_id != 'pending' %}
       <div><dt>IP Tailscale</dt><dd><code>{{ gateway.exit_node_id }}</code></dd></div>
       {% if exit_node %}
@@ -79,6 +94,16 @@
       {% if not exit_node.exit_approved %}
       <div><dt>Route exit</dt><dd><span class="status-pill warn">in approvazione</span></dd></div>
       {% endif %}
+      {% endif %}
+      {% if gateway.exit_node_id != 'pending' %}
+      <div class="card card-glass notice" style="margin-top:1rem">
+        <p><strong>Usare come exit node (sul tuo PC/telefono, non sul CP):</strong></p>
+        <p class="muted">In Tailscale → Exit node → seleziona <code>{{ display_name }}</code> (IP <code>{{ gateway.exit_node_id }}</code>).</p>
+        <p class="muted">Oppure da terminale sul client:</p>
+        <pre class="code-block">tailscale set --exit-node={{ gateway.exit_node_id }}</pre>
+        <p class="muted">Verifica: <code>curl ifconfig.me</code> deve mostrare l'IP pubblico del worker (es. <code>146.190.232.35</code>), non <code>165.227.156.103</code>.</p>
+        <p class="muted">WireGuard backhaul = solo mesh Tailscale (<code>100.64.0.0/10</code>). Per internet serve l'exit node Tailscale sopra.</p>
+      </div>
       {% endif %}
       {% else %}
       <div><dt>IP Tailscale</dt><dd><span class="muted">disponibile dopo provisioning</span></dd></div>
@@ -92,15 +117,16 @@
 
   <section class="card card-glass">
     <div class="card-head row-head">
-      <h2>Peer backhaul WireGuard</h2>
+      <h2>Peer backhaul WireGuard (solo VPS uplink)</h2>
       <div class="peer-head-actions">
         {% if gateway.status.value == 'ready' %}
         {% if peers_online or peers_offline %}
-        <a href="/orchestrator/ui/gateways/{{ gateway.id }}/peers/config" class="btn btn-sm">Scarica .conf</a>
+        <a href="/orchestrator/ui/gateways/{{ gateway.id }}/peers/config" class="btn btn-sm">Scarica .conf uplink</a>
         {% endif %}
         {% endif %}
       </div>
     </div>
+    <p class="muted"><strong>Non</strong> importare questo .conf su PC o telefono. Va installato solo sulla VPS che fa da uplink internet (es. 178.62). Il cellulare usa l'app Tailscale → exit node <code>{{ gateway.tailscale_hostname or gateway.name }}</code> ({{ gateway.exit_node_id }}).</p>
 
     {% if gateway.status.value != 'ready' %}
     <p class="muted">Un solo peer backhaul (<code>{{ gateway.name }}-link</code>) viene creato automaticamente al termine del provisioning.</p>

@@ -12,7 +12,14 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTex
 
 from orchestrator.api.deps import DbSession
 from orchestrator.config import get_settings
-from orchestrator.headscale import HeadscaleError, list_exit_nodes
+from orchestrator.headscale import (
+    HeadscaleError,
+    approve_registration_request,
+    create_exit_node_preauth_key,
+    exit_node_registration_command,
+    list_exit_nodes,
+)
+from orchestrator.repositories.registration_request_repo import RegistrationRequestRepository
 from orchestrator.models.job import JobStatus
 from orchestrator.repositories.gateway_repo import GatewayRepository
 from orchestrator.repositories.job_repo import JobRepository
@@ -22,6 +29,9 @@ from orchestrator.services.gateway_service import CreateGatewayRequest, GatewayS
 from orchestrator.services.peer_service import PeerService
 from orchestrator.services.worker_service import WorkerService
 from orchestrator.web.views import (
+    gateway_headscale_display_name,
+    match_gateway_exit_node,
+    partition_exit_nodes,
     peer_is_online,
     sort_peers_by_connectivity,
     worker_host_label,
@@ -87,6 +97,7 @@ def _gateway_row(
     metrics_repo: MetricsRepository,
     peers_repo: PeerRepository,
     exit_nodes_by_ip: dict,
+    exit_nodes_by_hostname: dict,
 ) -> dict:
     metric = metrics_repo.latest_gateway_metric(gateway.id)
     peers = peers_repo.list_by_gateway(gateway.id)
@@ -94,9 +105,10 @@ def _gateway_row(
     peer_online = sum(
         1 for peer in peers if peer_is_online(peer, peer_metrics.get(peer.id))
     )
-    exit_node = exit_nodes_by_ip.get(gateway.exit_node_id)
+    exit_node = match_gateway_exit_node(gateway, exit_nodes_by_ip, exit_nodes_by_hostname)
     return {
         "gateway": gateway,
+        "display_name": gateway_headscale_display_name(gateway, exit_node),
         "endpoint": gs.get_endpoint(gateway),
         "tailscale_online": metric.tailscale_online if metric else None,
         "wg_online": metric.wg_online if metric else None,
@@ -106,7 +118,7 @@ def _gateway_row(
     }
 
 
-def _dashboard_workers(session: DbSession) -> tuple[list[dict], str | None]:
+def _dashboard_workers(session: DbSession) -> tuple[list[dict], list, str | None]:
     gateways = GatewayRepository(session).list_all()
     metrics_repo = MetricsRepository(session)
     peers_repo = PeerRepository(session)
@@ -117,8 +129,12 @@ def _dashboard_workers(session: DbSession) -> tuple[list[dict], str | None]:
     try:
         hs_nodes = list_exit_nodes()
         exit_nodes_by_ip = {node.tailscale_ip: node for node in hs_nodes}
+        exit_nodes_by_hostname = {node.hostname: node for node in hs_nodes}
+        unassigned, _ = partition_exit_nodes(hs_nodes, gateways)
     except HeadscaleError as exc:
         exit_nodes_by_ip = {}
+        exit_nodes_by_hostname = {}
+        unassigned = []
         headscale_error = f"Impossibile leggere exit node da Headscale: {exc}"
 
     sections = []
@@ -130,6 +146,7 @@ def _dashboard_workers(session: DbSession) -> tuple[list[dict], str | None]:
                 metrics_repo=metrics_repo,
                 peers_repo=peers_repo,
                 exit_nodes_by_ip=exit_nodes_by_ip,
+                exit_nodes_by_hostname=exit_nodes_by_hostname,
             )
             for gateway in gateways
             if gateway.worker_id == row["worker"].id
@@ -141,7 +158,7 @@ def _dashboard_workers(session: DbSession) -> tuple[list[dict], str | None]:
                 "gateways": gateway_rows,
             }
         )
-    return sections, headscale_error
+    return sections, unassigned, headscale_error
 
 
 def _worker_choices(session: DbSession) -> list[dict]:
@@ -162,12 +179,14 @@ def _worker_choices(session: DbSession) -> list[dict]:
 
 
 def _pending_registrations(session: DbSession) -> list:
-    return []
+    return RegistrationRequestRepository(session).list_pending()
 
 
 @router.get("", response_class=HTMLResponse)
 def dashboard(request: Request, session: DbSession, error: str | None = None) -> HTMLResponse:
-    workers, headscale_error = _dashboard_workers(session)
+    workers, unassigned, headscale_error = _dashboard_workers(session)
+    pending_regs = _pending_registrations(session)
+    settings = get_settings()
     return templates.TemplateResponse(
         request,
         "dashboard.html",
@@ -175,12 +194,68 @@ def dashboard(request: Request, session: DbSession, error: str | None = None) ->
             "workers": workers,
             "worker_choices": _worker_choices(session),
             "worker_choices_json": json.dumps(_worker_choices(session)),
+            "unassigned_exit_nodes": unassigned,
+            "pending_registrations": pending_regs,
             "headscale_error": headscale_error,
             "flash_error": error,
-            "login_server": get_settings().headscale_url,
+            "exit_node_tag": settings.headscale_exit_node_tag,
+            "login_server": settings.headscale_url,
             "title": "Dashboard",
         },
     )
+
+
+@router.post("/exit-nodes/authkey")
+def create_exit_node_authkey() -> JSONResponse:
+    settings = get_settings()
+    try:
+        preauth = create_exit_node_preauth_key()
+    except HeadscaleError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    return JSONResponse(
+        {
+            "key": preauth.key,
+            "tag": "",
+            "login_server": settings.headscale_url,
+            "command": exit_node_registration_command(preauth.key),
+            "hint": "Client mesh only — seleziona exit node negrexit (100.64.0.12) nell'app.",
+        }
+    )
+
+
+@router.get("/registrations/pending")
+def list_pending_registrations(session: DbSession) -> JSONResponse:
+    rows = RegistrationRequestRepository(session).list_pending()
+    return JSONResponse(
+        [
+            {
+                "registration_key": row.registration_key,
+                "display_code": row.display_code,
+                "created_at": row.created_at.isoformat(),
+            }
+            for row in rows
+        ]
+    )
+
+
+@router.post("/registrations/{registration_key}/approve")
+def approve_registration_ui(registration_key: str, session: DbSession) -> RedirectResponse:
+    key = registration_key.strip()
+    repo = RegistrationRequestRepository(session)
+    try:
+        node = approve_registration_request(key)
+        repo.mark_approved(key, node.node_id, node.tailscale_ip)
+        session.commit()
+    except HeadscaleError:
+        session.rollback()
+    return RedirectResponse(url="/orchestrator/ui", status_code=303)
+
+
+@router.post("/registrations/{registration_key}/reject")
+def reject_registration_ui(registration_key: str, session: DbSession) -> RedirectResponse:
+    RegistrationRequestRepository(session).mark_rejected(registration_key.strip())
+    session.commit()
+    return RedirectResponse(url="/orchestrator/ui", status_code=303)
 
 
 @router.get("/gateways/new")
@@ -298,12 +373,13 @@ def gateway_detail(
     headscale_error = None
     exit_node = None
     try:
-        for node in list_exit_nodes():
-            if node.tailscale_ip == gateway.exit_node_id or node.hostname == gateway.name:
-                exit_node = node
-                break
+        hs_nodes = list_exit_nodes()
+        exit_nodes_by_ip = {node.tailscale_ip: node for node in hs_nodes}
+        exit_nodes_by_hostname = {node.hostname: node for node in hs_nodes}
+        exit_node = match_gateway_exit_node(gateway, exit_nodes_by_ip, exit_nodes_by_hostname)
     except HeadscaleError as exc:
         headscale_error = str(exc)
+    display_name = gateway_headscale_display_name(gateway, exit_node)
     peers = PeerRepository(session).list_by_gateway(gateway_id)
     metrics_repo = MetricsRepository(session)
     peer_metrics = {peer.id: metrics_repo.latest_peer_metric(peer.id) for peer in peers}
@@ -320,8 +396,9 @@ def gateway_detail(
         request,
         "gateway_detail.html",
         {
-            "title": gateway.name,
+            "title": display_name,
             "gateway": gateway,
+            "display_name": display_name,
             "endpoint": gs.get_endpoint(gateway),
             "wg_gateway_ip": wg_gateway_ip,
             "exit_node": exit_node,
@@ -360,6 +437,27 @@ def delete_gateway_ui(
     except ValueError:
         pass
     return RedirectResponse(url="/orchestrator/ui", status_code=303)
+
+
+@router.post("/gateways/{gateway_id}/tailscale-name")
+def rename_gateway_tailscale_ui(
+    gateway_id: int,
+    session: DbSession,
+    tailscale_hostname: str = Form(...),
+) -> RedirectResponse:
+    service = GatewayService(session)
+    try:
+        service.rename_tailscale_display_name(gateway_id, tailscale_hostname.strip())
+        return RedirectResponse(
+            url=_gateway_detail_url(gateway_id, ok="Nome Headscale aggiornato"),
+            status_code=303,
+        )
+    except ValueError as exc:
+        session.rollback()
+        return RedirectResponse(
+            url=_gateway_detail_url(gateway_id, error=str(exc)),
+            status_code=303,
+        )
 
 
 @router.post("/gateways/{gateway_id}/peers")

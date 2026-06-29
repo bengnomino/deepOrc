@@ -7,8 +7,19 @@ from sqlalchemy.orm import Session
 from orchestrator.cloudinit import CloudInitParams, render_openwrt_setup, render_user_data
 from orchestrator.config import get_settings
 from orchestrator.crypto import encrypt_value, generate_token, hash_token
-from orchestrator.headscale import HeadscaleError, approve_exit_routes_for_tagged_nodes, create_gateway_preauth_key
-from orchestrator.headscale.client import get_node_tailscale_ip_by_hostname
+from orchestrator.headscale import (
+    HeadscaleError,
+    approve_exit_routes_for_tagged_nodes,
+    approve_node_exit_route,
+    create_gateway_preauth_key,
+    find_gateway_headscale_node,
+)
+from orchestrator.headscale.client import (
+    get_node_tailscale_ip_by_hostname,
+    list_headscale_nodes_raw,
+    rename_gateway_headscale_display_name,
+)
+from orchestrator.naming import headscale_node_name, validate_tailscale_display_name
 from orchestrator.incus import IncusClient, allocate_udp_port, allocate_vm_ip, launch_gateway_vm
 from orchestrator.incus.target import incus_target
 from orchestrator.models.gateway import Gateway, GatewayStatus
@@ -119,14 +130,79 @@ class GatewayService:
     def _finalize_exit_node(self, gateway: Gateway, agent: GatewayAgentClient) -> None:
         """Advertise gateway as exit node and store its Tailscale IP."""
         agent.advertise_exit_node()
+        node = find_gateway_headscale_node(
+            hostnames=[gateway.tailscale_hostname, gateway.name],
+        )
+        if node and node.get("id") is not None:
+            try:
+                approve_node_exit_route(int(node["id"]))
+            except HeadscaleError:
+                pass
         try:
             approve_exit_routes_for_tagged_nodes()
         except HeadscaleError:
             pass
-        tailscale_ip = get_node_tailscale_ip_by_hostname(gateway.name)
+        tailscale_ip = get_node_tailscale_ip_by_hostname(gateway.tailscale_hostname)
+        if not tailscale_ip:
+            tailscale_ip = get_node_tailscale_ip_by_hostname(gateway.name)
+        if not tailscale_ip and gateway.exit_node_id not in {"", EXIT_NODE_PENDING}:
+            tailscale_ip = gateway.exit_node_id
         if tailscale_ip:
             gateway.exit_node_id = tailscale_ip
             self._session.flush()
+
+    def rename_tailscale_display_name(self, gateway_id: int, display_name: str) -> Gateway:
+        """Rename the gateway on Headscale; internal gateway.name is unchanged."""
+        gateway = self._gateways.get_by_id(gateway_id)
+        if not gateway:
+            raise ValueError(f"Gateway {gateway_id} not found")
+        if gateway.status != GatewayStatus.READY:
+            raise ValueError(f"Gateway {gateway.name} is not ready")
+
+        new_name = validate_tailscale_display_name(display_name)
+        if new_name == gateway.tailscale_hostname:
+            return gateway
+
+        other = self._gateways.get_by_tailscale_hostname(new_name)
+        if other and other.id != gateway_id:
+            raise ValueError(f"Headscale name {new_name} is already used by gateway {other.name}")
+
+        node = find_gateway_headscale_node(
+            tailscale_ip=gateway.exit_node_id if gateway.exit_node_id not in {"", EXIT_NODE_PENDING} else None,
+            hostnames=[gateway.tailscale_hostname, gateway.name],
+        )
+        if not node:
+            raise ValueError(
+                f"Gateway {gateway.name} not found on Headscale — wait for Tailscale to come online"
+            )
+
+        node_id = node.get("id")
+        if node_id is None:
+            raise ValueError("Headscale did not return a node id")
+
+        for existing in list_headscale_nodes_raw():
+            if existing.get("id") == node_id:
+                continue
+            if headscale_node_name(existing) == new_name:
+                raise ValueError(f"Headscale name {new_name} is already taken")
+
+        try:
+            rename_gateway_headscale_display_name(int(node_id), new_name)
+        except HeadscaleError as exc:
+            raise ValueError(str(exc)) from exc
+
+        from orchestrator.crypto import decrypt_value
+
+        agent_token = decrypt_value(gateway.agent_token_enc)
+        try:
+            self._agent_client(gateway, agent_token).set_tailscale_hostname(new_name)
+        except Exception:
+            pass
+
+        gateway.tailscale_hostname = new_name
+        self._session.flush()
+        self._session.commit()
+        return gateway
 
     def provision_gateway(self, gateway_id: int, job_id: int | None = None) -> Gateway:
         from orchestrator.workers.provisioning_stages import (
@@ -196,7 +272,7 @@ class GatewayService:
                 setup_script,
                 instance_target=incus_target(worker, gateway.incus_instance),
                 listen_host=None if worker.is_local else worker.public_ip,
-                apply_wg_snat=worker.is_local,
+                apply_wg_snat=True,
             )
 
         stage(STAGE_CLOUD_INIT)
@@ -252,6 +328,15 @@ class GatewayService:
         stage(STAGE_PEER_SETUP)
         try:
             PeerService(self._session).ensure_backhaul_peer(gateway_id)
+            try:
+                agent.advertise_exit_node()
+                agent.run_exit_via_wg()
+            except Exception as exc:
+                import logging
+
+                logging.getLogger(__name__).warning(
+                    "Post-peer exit setup failed for gateway %s: %s", gateway_id, exc
+                )
         except ValueError:
             pass
         except Exception as exc:

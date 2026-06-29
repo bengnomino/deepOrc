@@ -5,6 +5,7 @@ from orchestrator.headscale.client import (
     PreAuthKey,
     RegisteredNode,
     approve_exit_routes_for_tagged_nodes,
+    approve_node_exit_route,
     approve_registration_request,
     assign_exit_node_name,
     create_exit_node_preauth_key,
@@ -12,9 +13,11 @@ from orchestrator.headscale.client import (
     create_worker_preauth_key,
     ensure_headscale_user,
     exit_node_registration_command,
+    find_gateway_headscale_node,
     get_node_tailscale_ip_by_hostname,
     get_user_id,
     list_exit_nodes,
+    rename_gateway_headscale_display_name,
     sync_exit_node_names,
 )
 
@@ -23,6 +26,7 @@ __all__ = [
     "PreAuthKey",
     "RegisteredNode",
     "approve_exit_routes_for_tagged_nodes",
+    "approve_node_exit_route",
     "approve_registration_request",
     "assign_exit_node_name",
     "create_exit_node_preauth_key",
@@ -30,8 +34,10 @@ __all__ = [
     "create_worker_preauth_key",
     "ensure_headscale_user",
     "exit_node_registration_command",
+    "find_gateway_headscale_node",
     "get_node_tailscale_ip_by_hostname",
     "get_user_id",
     "list_exit_nodes",
+    "rename_gateway_headscale_display_name",
     "sync_exit_node_names",
 ]

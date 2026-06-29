@@ -43,7 +43,10 @@ def exit_node_configured() -> bool:
         import json
 
         prefs = json.loads(result.stdout)
-        return bool(prefs.get("AdvertiseExitNode"))
+        if prefs.get("AdvertiseExitNode"):
+            return True
+        routes = prefs.get("AdvertiseRoutes") or []
+        return "0.0.0.0/0" in routes
     except json.JSONDecodeError:
         return "advertiseexitnode" in result.stdout.replace(" ", "").lower()
 

@@ -11,7 +11,12 @@ from orchestrator.services.host_stats import HostStats
 
 
 class GatewayUpdateRequest(BaseModel):
-    """No mutable gateway fields in deepOrc (exit node is implicit)."""
+    tailscale_hostname: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=128,
+        description="Display name on Headscale (internal gateway name unchanged)",
+    )
 
 
 class GatewayCreateRequest(BaseModel):
@@ -38,6 +43,7 @@ class GatewayResponse(BaseModel):
     wg_subnet: str
     wg_server_pubkey: str
     exit_node_id: str
+    tailscale_hostname: str
     endpoint: str
     error_message: str | None = None
     created_at: datetime

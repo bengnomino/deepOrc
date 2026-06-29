@@ -87,7 +87,11 @@ class Settings(BaseSettings):
     )
     headscale_exit_node_tag: str = Field(
         default="tag:exit",
-        description="Tag applied to Android exit nodes via preauth key; autoApprovers in ACL",
+        description="Tag for gateway exit nodes (autoApprovers in ACL); not used for mobile clients",
+    )
+    headscale_mobile_user: str = Field(
+        default="gateways",
+        description="Headscale user for mobile test clients (no exit advertisement)",
     )
     headscale_worker_tag: str = Field(
         default="tag:worker-host",

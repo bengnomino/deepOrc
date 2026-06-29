@@ -10,9 +10,14 @@ EXIT_NODE_ENV = Path("/opt/gateway-agent/exit-node.env")
 WG_GATEWAY_REPLY_RULE_PREF = "40"
 WG_PEER_RETURN_RULE_PREF = "35"
 WG_UDP_REPLY_RULE_PREF = "50"
+GATEWAY_TS_RULE_PREF = "45"
+EXIT_CLIENT_RULE_PREF = "58"
+BACKHAUL_ROUTE_TABLE = "200"
+BACKHAUL_ROUTE_TABLE_NAME = "backhaul"
 STALE_PEER_RULE_PREF = "100"
 STALE_PEER_TABLE = "100"
-TAILSCALE_SNAT_MARK = "0x400"
+TAILSCALE_SNAT_SUBNET = "100.64.0.0/10"
+UPLINK_INTERFACE = "wg0"
 
 
 def _run(cmd: list[str]) -> None:
@@ -50,7 +55,7 @@ def _vm_lan_ip() -> str:
     raise RuntimeError("could not detect VM LAN IP")
 
 
-def _wg_subnet(interface: str = "wg0") -> str:
+def _wg_subnet(interface: str = UPLINK_INTERFACE) -> str:
     result = subprocess.run(
         ["ip", "-4", "-o", "addr", "show", "dev", interface],
         capture_output=True,
@@ -66,7 +71,7 @@ def _wg_subnet(interface: str = "wg0") -> str:
     return "10.64.2.0/24"
 
 
-def _wg_gateway_ip(interface: str = "wg0") -> str:
+def _wg_gateway_ip(interface: str = UPLINK_INTERFACE) -> str:
     result = subprocess.run(
         ["ip", "-4", "-o", "addr", "show", "dev", interface],
         capture_output=True,
@@ -101,7 +106,7 @@ def _cleanup_stale_peer_routing(wg_subnet: str) -> None:
             "pref",
             STALE_PEER_RULE_PREF,
             "iif",
-            "wg0",
+            UPLINK_INTERFACE,
             "from",
             wg_subnet,
             "lookup",
@@ -109,144 +114,6 @@ def _cleanup_stale_peer_routing(wg_subnet: str) -> None:
         ]
     )
     _run_optional(["ip", "route", "flush", "table", STALE_PEER_TABLE])
-
-
-def _remove_custom_tailscale_masquerade() -> None:
-    result = subprocess.run(
-        ["nft", "-a", "list", "chain", "ip", "nat", "postrouting"],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    if result.returncode != 0:
-        return
-    for line in result.stdout.splitlines():
-        if 'oifname "tailscale0"' in line and "masquerade" in line:
-            handle = line.strip().split()[-1]
-            if handle.isdigit():
-                _run_optional(["nft", "delete", "rule", "ip", "nat", "postrouting", "handle", handle])
-
-
-def _ensure_wg_tailscale_forward_mark() -> None:
-    _run_optional(["nft", "add", "table", "ip", "mangle"])
-    _run_optional(
-        [
-            "nft",
-            "add",
-            "chain",
-            "ip",
-            "mangle",
-            "forward",
-            "{",
-            "type",
-            "filter",
-            "hook",
-            "forward",
-            "priority",
-            "mangle",
-            ";",
-            "policy",
-            "accept",
-            ";",
-            "}",
-        ]
-    )
-    result = subprocess.run(
-        ["nft", "-a", "list", "chain", "ip", "mangle", "forward"],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    if result.returncode == 0:
-        for line in result.stdout.splitlines():
-            if "wg0" in line and "tailscale0" in line and TAILSCALE_SNAT_MARK in line:
-                return
-    _run(
-        [
-            "nft",
-            "add",
-            "rule",
-            "ip",
-            "mangle",
-            "forward",
-            "iifname",
-            "wg0",
-            "oifname",
-            "tailscale0",
-            "meta",
-            "mark",
-            "set",
-            TAILSCALE_SNAT_MARK,
-        ]
-    )
-
-
-def _ensure_return_forward_rules() -> None:
-    result = subprocess.run(
-        ["nft", "-a", "list", "chain", "inet", "filter", "forward"],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    if result.returncode != 0:
-        return
-    has_open_return = any(
-        "tailscale0" in line and "wg0" in line and "accept" in line and "established" not in line
-        for line in result.stdout.splitlines()
-    )
-    if not has_open_return:
-        _run_optional(
-            [
-                "nft",
-                "add",
-                "rule",
-                "inet",
-                "filter",
-                "forward",
-                "iifname",
-                "tailscale0",
-                "oifname",
-                "wg0",
-                "accept",
-            ]
-        )
-
-
-def _set_vps_egress_fallback(wg_subnet: str, *, enable: bool) -> None:
-    prefix = wg_subnet.split("/")[0].rsplit(".", 1)[0]
-    result = subprocess.run(
-        ["nft", "-a", "list", "chain", "ip", "nat", "postrouting"],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    if result.returncode != 0:
-        return
-    handle = None
-    for line in result.stdout.splitlines():
-        if "enp5s0" in line and prefix in line:
-            handle = line.strip().split()[-1]
-    if enable:
-        if handle is None:
-            _run_optional(
-                [
-                    "nft",
-                    "add",
-                    "rule",
-                    "ip",
-                    "nat",
-                    "postrouting",
-                    "ip",
-                    "saddr",
-                    wg_subnet,
-                    "oifname",
-                    "enp5s0",
-                    "masquerade",
-                ]
-            )
-        return
-    if handle is not None and handle.isdigit():
-        _run_optional(["nft", "delete", "rule", "ip", "nat", "postrouting", "handle", handle])
 
 
 def _clear_advertised_wg_routes() -> None:
@@ -259,6 +126,318 @@ def _persist_exit_node_id(exit_node_id: str) -> None:
     EXIT_NODE_ENV.write_text(f"EXIT_NODE_ID={exit_node_id}\n", encoding="utf-8")
 
 
+def _detect_wan_interface() -> str:
+    from gateway_agent.config import get_agent_settings
+
+    settings = get_agent_settings()
+    if settings.net_interface:
+        return settings.net_interface
+    result = subprocess.run(
+        ["ip", "-4", "route", "show", "default"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    for line in result.stdout.splitlines():
+        parts = line.split()
+        for index, part in enumerate(parts):
+            if part == "dev" and index + 1 < len(parts):
+                return parts[index + 1]
+    return "eth0"
+
+
+def _nft_rule_exists(table: str, chain: str, needle: str) -> bool:
+    result = subprocess.run(
+        ["nft", "-a", "list", "chain", *table.split(), chain],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    return result.returncode == 0 and needle in result.stdout
+
+
+def _nft_delete_matching(table: str, chain: str, predicate) -> None:
+    result = subprocess.run(
+        ["nft", "-a", "list", "chain", *table.split(), chain],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        return
+    for line in result.stdout.splitlines():
+        if predicate(line):
+            handle = line.strip().split()[-1]
+            if handle.isdigit():
+                _run_optional(["nft", "delete", "rule", *table.split(), chain, "handle", handle])
+
+
+def _tailscale_gateway_ip() -> str | None:
+    result = subprocess.run(
+        ["ip", "-4", "-o", "addr", "show", "dev", "tailscale0"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    for line in result.stdout.splitlines():
+        match = re.search(r"\sinet\s(\S+)", line)
+        if match:
+            return match.group(1).split("/")[0]
+    return None
+
+
+def _cleanup_stale_exit_hacks() -> None:
+    """Remove experimental fwmark/mangle rules from earlier iterations."""
+    for pref in ("54", "55", "60"):
+        _run_optional(["ip", "rule", "del", "pref", pref])
+    for table in ("ip gw_mangle", "ip gw_preroute"):
+        _run_optional(["nft", "delete", "table", *table.split()])
+
+
+def _ensure_backhaul_policy_routing(
+    vm_ip: str,
+    wg_gateway_ip: str,
+    wg_subnet: str,
+    tailscale_ip: str | None = None,
+) -> None:
+    """Route traffic arriving on tailscale0 via wg0 (WireGuard uplink)."""
+    ts_ip = tailscale_ip or _tailscale_gateway_ip()
+    _ensure_ip_rule(WG_PEER_RETURN_RULE_PREF, ["to", wg_subnet, "lookup", "main"])
+    _ensure_ip_rule(WG_GATEWAY_REPLY_RULE_PREF, ["from", f"{wg_gateway_ip}/32", "lookup", "main"])
+    _ensure_ip_rule(WG_UDP_REPLY_RULE_PREF, ["from", f"{vm_ip}/32", "lookup", "main"])
+    if ts_ip:
+        _ensure_ip_rule(GATEWAY_TS_RULE_PREF, ["from", f"{ts_ip}/32", "lookup", "main"])
+
+    _cleanup_stale_exit_hacks()
+    _ensure_ip_rule(EXIT_CLIENT_RULE_PREF, ["iif", "tailscale0", "lookup", BACKHAUL_ROUTE_TABLE])
+
+    if subprocess.run(
+        ["grep", "-q", BACKHAUL_ROUTE_TABLE_NAME, "/etc/iproute2/rt_tables"],
+        capture_output=True,
+        check=False,
+    ).returncode != 0:
+        with open("/etc/iproute2/rt_tables", "a", encoding="utf-8") as fh:
+            fh.write(f"{BACKHAUL_ROUTE_TABLE} {BACKHAUL_ROUTE_TABLE_NAME}\n")
+    _run(["ip", "route", "replace", "default", "dev", UPLINK_INTERFACE, "table", BACKHAUL_ROUTE_TABLE])
+
+
+def _strip_tailscale_postrouting_masquerade() -> None:
+    """Tailscale SNAT on eth0 breaks exit-via-wg; we masquerade on wg0 instead."""
+    _nft_delete_matching(
+        "ip nat",
+        "ts-postrouting",
+        lambda line: "masquerade" in line,
+    )
+
+
+def _ensure_exit_via_wg_backhaul() -> None:
+    """SNAT exit on wg0 + forward tailscale0 <-> wg0 (same as exit-via-wg.sh)."""
+    _strip_tailscale_postrouting_masquerade()
+    _run_optional(["nft", "delete", "table", "ip", "gw_nat"])
+    _run_optional(["nft", "delete", "table", "ip", "deeporc_exit"])
+    gateway_nft = Path("/etc/nftables.d/gateway.nft")
+    if gateway_nft.is_file():
+        _run(["nft", "-f", str(gateway_nft)])
+        return
+    _run_optional(["nft", "add", "table", "ip", "gw_nat"])
+    _run_optional(
+        [
+            "nft",
+            "add",
+            "chain",
+            "ip",
+            "gw_nat",
+            "postrouting",
+            "{",
+            "type",
+            "nat",
+            "hook",
+            "postrouting",
+            "priority",
+            "srcnat",
+            ";",
+            "policy",
+            "accept",
+            ";",
+            "}",
+        ]
+    )
+    _run_optional(
+        [
+            "nft",
+            "add",
+            "rule",
+            "ip",
+            "gw_nat",
+            "postrouting",
+            "ip",
+            "saddr",
+            TAILSCALE_SNAT_SUBNET,
+            "oifname",
+            UPLINK_INTERFACE,
+            "masquerade",
+        ]
+    )
+    _run_optional(["nft", "add", "table", "ip", "deeporc_exit"])
+    _run_optional(
+        [
+            "nft",
+            "add",
+            "chain",
+            "ip",
+            "deeporc_exit",
+            "forward",
+            "{",
+            "type",
+            "filter",
+            "hook",
+            "forward",
+            "priority",
+            "filter",
+            ";",
+            "policy",
+            "accept",
+            ";",
+            "}",
+        ]
+    )
+    if not _nft_rule_exists("ip deeporc_exit", "forward", "tailscale0"):
+        _run_optional(
+            [
+                "nft",
+                "add",
+                "rule",
+                "ip",
+                "deeporc_exit",
+                "forward",
+                "iifname",
+                "tailscale0",
+                "oifname",
+                UPLINK_INTERFACE,
+                "accept",
+            ]
+        )
+        _run_optional(
+            [
+                "nft",
+                "add",
+                "rule",
+                "ip",
+                "deeporc_exit",
+                "forward",
+                "iifname",
+                UPLINK_INTERFACE,
+                "oifname",
+                "tailscale0",
+                "accept",
+            ]
+        )
+
+
+def remove_exit_node_egress(wan_interface: str | None = None) -> None:
+    """Firewall disabled — no-op."""
+
+
+def ensure_exit_node_forwarding(wan_interface: str | None = None) -> None:
+    """Route + SNAT Tailscale exit via WireGuard uplink."""
+    _ = wan_interface
+    vm_ip = _vm_lan_ip()
+    wg_gateway_ip = _wg_gateway_ip()
+    wg_subnet = _wg_subnet()
+    ts_ip = _tailscale_gateway_ip()
+
+    _ensure_backhaul_policy_routing(vm_ip, wg_gateway_ip, wg_subnet, ts_ip)
+    _ensure_exit_via_wg_backhaul()
+
+
+def advertise_exit_node() -> None:
+    """Advertise this gateway as a Tailscale exit node (deepOrc model)."""
+    wg_subnet = _wg_subnet()
+    _cleanup_stale_peer_routing(wg_subnet)
+
+    result = subprocess.run(
+        ["tailscale", "set", "--advertise-exit-node", "--accept-dns", "--advertise-routes="],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(result.stderr.strip() or "tailscale advertise-exit-node failed")
+
+    _clear_advertised_wg_routes()
+    ensure_exit_node_forwarding()
+    _strip_tailscale_postrouting_masquerade()
+
+
+def set_tailscale_hostname(hostname: str) -> None:
+    result = subprocess.run(
+        ["tailscale", "set", "--hostname", hostname],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(result.stderr.strip() or "tailscale set hostname failed")
+
+
+def restore_exit_node_routing() -> None:
+    """On agent startup, restore exit routing if advertised."""
+    _cleanup_stale_exit_hacks()
+    try:
+        result = subprocess.run(
+            ["tailscale", "debug", "prefs"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if result.returncode == 0:
+            import json
+
+            try:
+                prefs = json.loads(result.stdout)
+                exit_advertised = bool(prefs.get("AdvertiseExitNode")) or "0.0.0.0/0" in (
+                    prefs.get("AdvertiseRoutes") or []
+                )
+            except json.JSONDecodeError:
+                exit_advertised = '"AdvertiseExitNode": true' in result.stdout
+            if exit_advertised:
+                ensure_exit_node_forwarding()
+            else:
+                remove_exit_node_egress()
+        else:
+            remove_exit_node_egress()
+    except RuntimeError:
+        remove_exit_node_egress()
+
+
+def set_exit_node(exit_node_id: str) -> None:
+    """Gateway consumes another Tailscale exit (not the deepOrc advertise path)."""
+    vm_ip = _vm_lan_ip()
+    wg_gateway_ip = _wg_gateway_ip()
+    wg_subnet = _wg_subnet()
+
+    _ensure_wg_reply_rules(vm_ip, wg_gateway_ip, wg_subnet)
+    _cleanup_stale_peer_routing(wg_subnet)
+
+    result = subprocess.run(
+        [
+            "tailscale",
+            "set",
+            f"--exit-node={exit_node_id}",
+            "--exit-node-allow-lan-access=false",
+            "--netfilter-mode=off",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(result.stderr.strip() or "tailscale set failed")
+
+    _clear_advertised_wg_routes()
+    _persist_exit_node_id(exit_node_id)
+
+
 def clear_exit_node() -> None:
     result = subprocess.run(
         ["tailscale", "set", "--exit-node=", "--netfilter-mode=off"],
@@ -268,71 +447,6 @@ def clear_exit_node() -> None:
     )
     if result.returncode != 0:
         raise RuntimeError(result.stderr.strip() or "tailscale clear exit-node failed")
+    remove_exit_node_egress()
     if EXIT_NODE_ENV.is_file():
         EXIT_NODE_ENV.unlink()
-
-
-def advertise_exit_node() -> None:
-    """Advertise this gateway as a Tailscale exit node (deepOrc model)."""
-    vm_ip = _vm_lan_ip()
-    wg_gateway_ip = _wg_gateway_ip()
-    wg_subnet = _wg_subnet()
-
-    _ensure_wg_reply_rules(vm_ip, wg_gateway_ip, wg_subnet)
-    _cleanup_stale_peer_routing(wg_subnet)
-
-    result = subprocess.run(
-        [
-            "tailscale",
-            "set",
-            "--advertise-exit-node",
-            "--netfilter-mode=off",
-        ],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    if result.returncode != 0:
-        raise RuntimeError(result.stderr.strip() or "tailscale advertise-exit-node failed")
-
-    _clear_advertised_wg_routes()
-
-
-def restore_exit_node_routing() -> None:
-    """On agent startup, ensure exit node is advertised (idempotent)."""
-    try:
-        advertise_exit_node()
-    except RuntimeError:
-        pass
-
-
-def set_exit_node(exit_node_id: str) -> None:
-    vm_ip = _vm_lan_ip()
-    wg_gateway_ip = _wg_gateway_ip()
-    wg_subnet = _wg_subnet()
-
-    _ensure_wg_reply_rules(vm_ip, wg_gateway_ip, wg_subnet)
-    _cleanup_stale_peer_routing(wg_subnet)
-    _remove_custom_tailscale_masquerade()
-    _ensure_wg_tailscale_forward_mark()
-    _ensure_return_forward_rules()
-
-    result = subprocess.run(
-        [
-            "tailscale",
-            "set",
-            f"--exit-node={exit_node_id}",
-            "--exit-node-allow-lan-access=false",
-            "--netfilter-mode=on",
-        ],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    if result.returncode != 0:
-        raise RuntimeError(result.stderr.strip() or "tailscale set failed")
-
-    _set_vps_egress_fallback(wg_subnet, enable=False)
-    _remove_custom_tailscale_masquerade()
-    _clear_advertised_wg_routes()
-    _persist_exit_node_id(exit_node_id)

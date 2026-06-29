@@ -1,6 +1,17 @@
 """Tests for WireGuard routing helpers."""
 
-from orchestrator.wg.routes import ipv4_allowed_ips_full_tunnel
+from orchestrator.wg.routes import ipv4_allowed_ips_backhaul, ipv4_allowed_ips_full_tunnel
+
+
+def test_backhaul_routes_tailscale_only():
+    allowed = ipv4_allowed_ips_backhaul("10.64.2.0/24")
+    assert allowed == "10.64.2.0/24, 100.64.0.0/10"
+    assert "0.0.0.0/0" not in allowed
+
+
+def test_backhaul_without_wg_subnet():
+    allowed = ipv4_allowed_ips_backhaul()
+    assert allowed == "100.64.0.0/10"
 
 
 def test_full_tunnel_uses_default_routes():

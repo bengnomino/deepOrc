@@ -44,7 +44,8 @@ def render_openwrt_setup(params: CloudInitParams) -> str:
     env = Environment(
         loader=FileSystemLoader(TEMPLATES_DIR),
         autoescape=select_autoescape(default=False),
-        trim_blocks=True,
-        lstrip_blocks=True,
+        # Heredoc terminators must stay on their own line; trim_blocks merges them into includes.
+        trim_blocks=False,
+        lstrip_blocks=False,
     )
     return env.get_template("openwrt-setup.sh.j2").render(**params.__dict__)

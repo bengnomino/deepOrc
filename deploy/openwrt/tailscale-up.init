@@ -11,8 +11,9 @@ start() {
 		--authkey="$TAILSCALE_AUTH_KEY" \
 		--hostname="$GATEWAY_NAME" \
 		--advertise-exit-node \
+		--accept-dns \
 		--accept-routes \
-		--netfilter-mode=off
+		--netfilter-mode=on
 }
 
 stop() {

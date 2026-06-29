@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 from gateway_agent.config import AgentSettings, get_agent_settings
 from gateway_agent.health import collect_health
 from gateway_agent.nft_handler import resume_peer_ip, suspend_peer_ip
-from gateway_agent.tailscale_handler import advertise_exit_node, restore_exit_node_routing
+from gateway_agent.tailscale_handler import advertise_exit_node, restore_exit_node_routing, set_tailscale_hostname
 from gateway_agent.wg_handler import add_peer, get_config, list_peers, remove_peer
 
 
@@ -36,6 +36,10 @@ class HealthResponse(BaseModel):
 
 class RegisterRequest(BaseModel):
     gateway_name: str = Field(min_length=1, max_length=128)
+
+
+class TailscaleHostnameUpdate(BaseModel):
+    hostname: str = Field(min_length=1, max_length=128)
 
 
 class ExitNodeUpdate(BaseModel):
@@ -121,6 +125,13 @@ def create_app() -> FastAPI:
     @app.get("/v1/wg/config")
     def wg_config(_: None = Depends(verify_token)) -> dict[str, str]:
         return {"config": get_config(settings.wg_interface)}
+
+    @app.post("/v1/tailscale/hostname")
+    def update_tailscale_hostname(
+        body: TailscaleHostnameUpdate, _: None = Depends(verify_token)
+    ) -> dict[str, str]:
+        set_tailscale_hostname(body.hostname.strip().lower())
+        return {"status": "updated", "hostname": body.hostname.strip().lower()}
 
     @app.post("/v1/tailscale/advertise-exit")
     def advertise_exit(_: None = Depends(verify_token)) -> dict[str, str]:

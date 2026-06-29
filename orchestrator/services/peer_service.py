@@ -12,7 +12,14 @@ from orchestrator.repositories.gateway_repo import GatewayRepository
 from orchestrator.repositories.peer_repo import PeerRepository
 from orchestrator.services.gateway_agent_client import GatewayAgentClient
 from orchestrator.services.gateway_service import GatewayService
-from orchestrator.wg import ClientConfigParams, allocate_peer_ip, generate_keypair, ipv4_allowed_ips_full_tunnel, release_peer_ip, render_client_config
+from orchestrator.wg import (
+    ClientConfigParams,
+    allocate_peer_ip,
+    generate_keypair,
+    release_peer_ip,
+    render_client_config,
+)
+from orchestrator.wg.routes import BACKHAUL_GATEWAY_PEER_ALLOWED_IPS, ipv4_allowed_ips_backhaul_uplink
 
 MAX_PEERS_PER_GATEWAY = 1
 
@@ -67,7 +74,7 @@ class PeerService:
 
         keys = generate_keypair()
         peer_ip = allocate_peer_ip(self._session, gateway)
-        allowed_ips = f"{peer_ip}/32"
+        allowed_ips = BACKHAUL_GATEWAY_PEER_ALLOWED_IPS
 
         peer = Peer(
             gateway_id=gateway.id,
@@ -90,7 +97,7 @@ class PeerService:
                 dns=self._settings.wg_dns,
                 server_public_key=gateway.wg_server_pubkey,
                 endpoint=endpoint,
-                allowed_ips=ipv4_allowed_ips_full_tunnel(endpoint, gateway.wg_subnet),
+                allowed_ips=ipv4_allowed_ips_backhaul_uplink(gateway.wg_subnet),
             )
         )
         self._session.commit()
@@ -130,7 +137,7 @@ class PeerService:
                 dns=self._settings.wg_dns,
                 server_public_key=gateway.wg_server_pubkey,
                 endpoint=endpoint,
-                allowed_ips=ipv4_allowed_ips_full_tunnel(endpoint, gateway.wg_subnet),
+                allowed_ips=ipv4_allowed_ips_backhaul_uplink(gateway.wg_subnet),
             )
         )
 
@@ -174,7 +181,7 @@ class PeerService:
         agent.remove_peer(old_pubkey)
 
         keys = generate_keypair()
-        allowed_ips = f"{peer.allowed_ip}/32"
+        allowed_ips = BACKHAUL_GATEWAY_PEER_ALLOWED_IPS
         agent.add_peer(keys.public_key, allowed_ips)
 
         peer.public_key = keys.public_key
@@ -190,7 +197,7 @@ class PeerService:
                 dns=self._settings.wg_dns,
                 server_public_key=gateway.wg_server_pubkey,
                 endpoint=endpoint,
-                allowed_ips=ipv4_allowed_ips_full_tunnel(endpoint, gateway.wg_subnet),
+                allowed_ips=ipv4_allowed_ips_backhaul_uplink(gateway.wg_subnet),
             )
         )
         self._session.commit()

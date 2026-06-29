@@ -32,6 +32,7 @@ log:
 dns:
   magic_dns: true
   base_domain: ts.harlock.network
+  override_local_dns: true
   nameservers:
     global:
       - 1.1.1.1

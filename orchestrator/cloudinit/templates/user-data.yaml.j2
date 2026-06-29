@@ -26,33 +26,14 @@ write_files:
       Address = {{ wg_gateway_ip }}/24
       ListenPort = {{ wg_listen_port }}
 
-  - path: /etc/nftables.conf
+  - path: /etc/nftables.d/gateway.nft
     content: |
-      #!/usr/sbin/nft -f
-      flush ruleset
+{% include '_fragments/gateway.nft' %}
 
-      table inet filter {
-        chain input {
-          type filter hook input priority filter; policy drop;
-          iif "lo" accept
-          ct state established,related accept
-          iifname "wg0" accept
-          udp dport {{ wg_listen_port }} accept
-          tcp dport {{ agent_port }} ip saddr { {{ orch_allowed_ip }}, {{ vm_ip }} } accept
-        }
-        chain forward {
-          type filter hook forward priority filter; policy drop;
-          iifname "wg0" oifname "enp5s0" accept
-          iifname "enp5s0" oifname "wg0" ct state established,related accept
-        }
-      }
-
-      table ip nat {
-        chain postrouting {
-          type nat hook postrouting priority srcnat; policy accept;
-          ip saddr {{ wg_subnet }} oifname "enp5s0" masquerade
-        }
-      }
+  - path: /opt/gateway-agent/exit-via-wg.sh
+    permissions: '0755'
+    content: |
+{% include '_fragments/exit-via-wg.sh' %}
 
   - path: /etc/systemd/system/tailscale-up.service
     content: |
@@ -69,7 +50,8 @@ write_files:
         --authkey={{ tailscale_auth_key }} \
         --hostname={{ gateway_name }} \
         --advertise-exit-node \
-        --accept-routes
+        --accept-routes \
+        --netfilter-mode=off
       ExecStop=/usr/bin/tailscale down
 
       [Install]
@@ -87,6 +69,24 @@ write_files:
       RemainAfterExit=yes
       ExecStart=/bin/sh -c 'ip rule del pref 35 to {{ wg_subnet }} lookup main 2>/dev/null || true; ip rule add pref 35 to {{ wg_subnet }} lookup main; ip rule del pref 40 from {{ wg_gateway_ip }}/32 lookup main 2>/dev/null || true; ip rule add pref 40 from {{ wg_gateway_ip }}/32 lookup main; ip rule del pref 50 from {{ vm_ip }}/32 lookup main 2>/dev/null || true; ip rule add pref 50 from {{ vm_ip }}/32 lookup main; ip link set wg0 mtu 1280'
       ExecStop=/bin/sh -c 'ip rule del pref 35 to {{ wg_subnet }} lookup main 2>/dev/null || true; ip rule del pref 40 from {{ wg_gateway_ip }}/32 lookup main 2>/dev/null || true; ip rule del pref 50 from {{ vm_ip }}/32 lookup main 2>/dev/null || true'
+
+      [Install]
+      WantedBy=multi-user.target
+
+  - path: /etc/systemd/system/exit-via-wg.service
+    content: |
+      [Unit]
+      Description=Tailscale exit node via WireGuard uplink
+      After=network-online.target tailscaled.service wg-quick@wg0.service tailscale-up.service
+      Wants=network-online.target
+      Requires=tailscaled.service wg-quick@wg0.service
+
+      [Service]
+      Type=oneshot
+      RemainAfterExit=yes
+      ExecStart=/bin/sh -c 'for i in $(seq 1 20); do ip link show wg0 >/dev/null 2>&1 && ip link show tailscale0 >/dev/null 2>&1 && exit 0; sleep 1; done; exit 1'
+      ExecStart=/opt/gateway-agent/exit-via-wg.sh
+      ExecStop=/bin/sh -c 'ip rule del pref 58 iif tailscale0 lookup backhaul 2>/dev/null || true'
 
       [Install]
       WantedBy=multi-user.target
@@ -126,8 +126,8 @@ runcmd:
 {% else %}
   - mkdir -p /opt/gateway-agent/src
 {% endif %}
-  - systemctl enable --now nftables
   - systemctl enable --now wg-quick@wg0
   - systemctl enable --now tailscale-up
+  - systemctl enable --now exit-via-wg
   - systemctl enable --now gateway-routing
   - systemctl enable --now gateway-agent

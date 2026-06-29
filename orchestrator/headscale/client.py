@@ -201,6 +201,26 @@ def get_node_tailscale_ip_by_hostname(hostname: str) -> str | None:
     return None
 
 
+def find_gateway_headscale_node(
+    *,
+    tailscale_ip: str | None = None,
+    hostnames: list[str] | None = None,
+) -> dict | None:
+    """Locate a gateway's Headscale node by Tailscale IP and/or known hostnames."""
+    wanted = {name for name in (hostnames or []) if name}
+    for node in list_headscale_nodes_raw():
+        ipv4 = _node_ipv4(node)
+        if tailscale_ip and ipv4 == tailscale_ip:
+            return node
+        if wanted and headscale_node_name(node) in wanted:
+            return node
+    return None
+
+
+def rename_gateway_headscale_display_name(node_id: int, display_name: str) -> None:
+    rename_headscale_node(node_id, display_name)
+
+
 def list_exit_nodes() -> list[HeadscaleNode]:
     """Exit nodes from Headscale (tagged or advertising 0.0.0.0/0)."""
     nodes = list_headscale_nodes_raw()
@@ -223,6 +243,37 @@ def list_exit_nodes() -> list[HeadscaleNode]:
     return result
 
 
+def _approve_exit_route_if_needed(node: dict) -> bool:
+    approved = _route_list(node, "approvedRoutes", "approved_routes")
+    if _has_exit_route(approved):
+        return False
+    available = _route_list(node, "availableRoutes", "available_routes")
+    if not _has_exit_route(available):
+        return False
+    node_id = node.get("id")
+    if node_id is None:
+        return False
+    _run_headscale(
+        [
+            "nodes",
+            "approve-routes",
+            "-i",
+            str(node_id),
+            "-r",
+            "0.0.0.0/0",
+        ]
+    )
+    return True
+
+
+def approve_node_exit_route(node_id: int) -> bool:
+    """Approve 0.0.0.0/0 for a specific Headscale node if it advertises exit."""
+    for node in list_headscale_nodes_raw():
+        if node.get("id") == node_id:
+            return _approve_exit_route_if_needed(node)
+    return False
+
+
 def approve_exit_routes_for_tagged_nodes() -> int:
     """Fallback: approve exit routes for tag:exit nodes (autoApprovers should handle this)."""
     settings = get_settings()
@@ -230,26 +281,8 @@ def approve_exit_routes_for_tagged_nodes() -> int:
     for node in list_headscale_nodes_raw():
         if not _node_has_exit_tag(node, settings.headscale_exit_node_tag):
             continue
-        approved = _route_list(node, "approvedRoutes", "approved_routes")
-        if _has_exit_route(approved):
-            continue
-        available = _route_list(node, "availableRoutes", "available_routes")
-        if not _has_exit_route(available):
-            continue
-        node_id = node.get("id")
-        if node_id is None:
-            continue
-        _run_headscale(
-            [
-                "nodes",
-                "approve-routes",
-                "-i",
-                str(node_id),
-                "-r",
-                "0.0.0.0/0",
-            ]
-        )
-        approved_count += 1
+        if _approve_exit_route_if_needed(node):
+            approved_count += 1
     return approved_count
 
 
@@ -349,9 +382,9 @@ def create_gateway_preauth_key() -> PreAuthKey:
 
 
 def create_exit_node_preauth_key() -> PreAuthKey:
-    """Reusable preauth key for Android exit nodes (tagged for auto-approval)."""
+    """Reusable preauth key for mobile Tailscale clients (mesh member, not exit provider)."""
     settings = get_settings()
-    user_id = get_user_id()
+    user_id = ensure_headscale_user(settings.headscale_mobile_user)
     output = _run_headscale(
         [
             "preauthkeys",
@@ -361,8 +394,6 @@ def create_exit_node_preauth_key() -> PreAuthKey:
             "--reusable",
             "-e",
             settings.headscale_preauth_expiration,
-            "--tags",
-            settings.headscale_exit_node_tag,
             "-o",
             "json",
         ]
@@ -404,7 +435,8 @@ def exit_node_registration_command(auth_key: str) -> str:
     settings = get_settings()
     return (
         f"tailscale up --login-server={settings.headscale_url} "
-        f"--advertise-exit-node --authkey={auth_key}"
+        f"--authkey={auth_key}\n"
+        f"# Poi sul telefono: Exit node → negrexit (100.64.0.12)"
     )
 
 
@@ -412,7 +444,7 @@ def exit_node_web_registration_hint() -> str:
     settings = get_settings()
     return (
         f"Nell'app Tailscale: server personalizzato → {settings.headscale_url}\n"
-        f"Abilita «Usa come exit node», poi attendi l'apertura del browser su /register/…"
+        f"NON abilitare «Offri exit node». Dopo l'approvazione: Exit node → negrexit (gateway)."
     )
 
 
@@ -465,41 +497,14 @@ def register_node_with_headscale(registration_key: str) -> dict:
 
 
 def approve_registration_request(registration_key: str) -> RegisteredNode:
-    """Approve a mobile web-auth registration and configure it as exit node."""
+    """Approve a mobile web-auth registration as mesh client (not exit provider)."""
     key = normalize_registration_key(registration_key)
     if not is_valid_registration_key(key):
         raise HeadscaleError(
             "Registration ID must be a 24-character key or hskey-authreq-* auth id"
         )
     node = _parse_registered_node(register_node_with_headscale(key))
-    settings = get_settings()
-    _run_headscale(
-        [
-            "nodes",
-            "tag",
-            "-i",
-            str(node.node_id),
-            "-t",
-            settings.headscale_exit_node_tag,
-        ]
-    )
-    try:
-        _run_headscale(
-            [
-                "nodes",
-                "approve-routes",
-                "-i",
-                str(node.node_id),
-                "-r",
-                "0.0.0.0/0",
-            ]
-        )
-    except HeadscaleError:
-        pass
-    try:
-        approve_exit_routes_for_tagged_nodes()
-    except HeadscaleError:
-        pass
+    _run_headscale(["nodes", "approve-routes", "-i", str(node.node_id), "-r", ""])
     assigned_name = assign_exit_node_name(node.node_id)
     return RegisteredNode(
         node_id=node.node_id,

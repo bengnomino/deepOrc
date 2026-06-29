@@ -16,6 +16,11 @@ class GatewayRepository:
     def get_by_name(self, name: str) -> Gateway | None:
         return self._session.scalars(select(Gateway).where(Gateway.name == name)).first()
 
+    def get_by_tailscale_hostname(self, hostname: str) -> Gateway | None:
+        return self._session.scalars(
+            select(Gateway).where(Gateway.tailscale_hostname == hostname)
+        ).first()
+
     def list_all(self) -> list[Gateway]:
         return list(self._session.scalars(select(Gateway).order_by(Gateway.id)).all())
 

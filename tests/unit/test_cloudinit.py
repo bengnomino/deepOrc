@@ -24,9 +24,13 @@ def test_render_user_data():
     assert "pref 40 from 10.64.1.1/32 lookup main" in data
     assert "pref 50 from 10.10.1.10/32 lookup main" in data
     assert '--advertise-exit-node' in data
-    assert 'iifname "wg0" oifname "enp5s0" accept' in data
-    assert "meta mark set 0x400" not in data
-    assert "oifname \"enp5s0\" masquerade" in data
+    assert 'ip saddr 100.64.0.0/10 oifname "wg0" masquerade' in data
+    assert "deeporc_exit" in data
+    assert "/opt/gateway-agent/exit-via-wg.sh" in data
+    assert "tailscale up --advertise-exit-node --netfilter-mode=on --reset" not in data
+    assert 'policy drop' not in data
+    assert 'ip saddr 100.64.0.0/10 oifname "enp5s0" masquerade' not in data
+    assert 'ip saddr 10.64.1.0/24 oifname "enp5s0" masquerade' not in data
     assert "ip link set wg0 mtu 1280" in data
 
 
@@ -50,5 +54,9 @@ def test_render_user_data_golden():
     assert "pip install" not in data
     assert "tailscale.com/install.sh" not in data
     assert "rc-service wg-quick.wg0 restart" in data
-    assert 'oifname "eth0"' in data
+    assert 'ip saddr 100.64.0.0/10 oifname "wg0" masquerade' in data
+    assert "deeporc_exit" in data
+    assert "/opt/gateway-agent/exit-via-wg.sh" in data
+    assert "tailscale up --advertise-exit-node --netfilter-mode=on --reset" not in data
+    assert 'oifname "eth0" masquerade' not in data
     assert "privkey" in data

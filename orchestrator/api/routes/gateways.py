@@ -28,6 +28,7 @@ def _to_response(gateway, endpoint: str) -> GatewayResponse:
         wg_subnet=gateway.wg_subnet,
         wg_server_pubkey=gateway.wg_server_pubkey,
         exit_node_id=gateway.exit_node_id,
+        tailscale_hostname=gateway.tailscale_hostname,
         endpoint=endpoint,
         error_message=gateway.error_message,
         created_at=gateway.created_at,
@@ -101,9 +102,15 @@ def update_gateway(
     session: DbSession,
     _: ApiAuth,
 ) -> GatewayResponse:
-    repo = GatewayRepository(session)
-    gateway = repo.get_by_id(gateway_id)
+    service = GatewayService(session)
+    gateway = GatewayRepository(session).get_by_id(gateway_id)
     if not gateway:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Gateway not found")
-    service = GatewayService(session)
+
+    if body.tailscale_hostname is not None:
+        try:
+            gateway = service.rename_tailscale_display_name(gateway_id, body.tailscale_hostname)
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
     return _to_response(gateway, service.get_endpoint(gateway))

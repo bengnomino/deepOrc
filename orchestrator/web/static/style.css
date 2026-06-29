@@ -436,6 +436,16 @@ body {
 
 .gateway-name:hover { color: var(--accent-2); }
 
+.gateway-object-id {
+  font-size: 0.72rem;
+  font-family: var(--mono, ui-monospace, monospace);
+}
+
+.page-hero .object-id {
+  margin: 0.35rem 0 0;
+  font-size: 0.85rem;
+}
+
 .signal-row {
   display: flex;
   gap: 0.4rem;
@@ -1118,9 +1128,63 @@ code {
 
 .field-label {
   display: block;
-  margin-bottom: 1rem;
+  margin-bottom: 0.5rem;
   font-size: 0.85rem;
   color: var(--muted);
+}
+
+.field-label input,
+.text-input {
+  width: 100%;
+  padding: 0.55rem 0.75rem;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: rgba(7, 11, 18, 0.65);
+  color: var(--text);
+  font-family: ui-monospace, monospace;
+  font-size: 0.875rem;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.field-label input:focus,
+.text-input:focus {
+  outline: none;
+  border-color: rgba(56, 189, 248, 0.55);
+  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.12);
+}
+
+.rename-form {
+  margin: 0.65rem 0 1.1rem;
+  padding: 0.85rem 1rem;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: rgba(7, 11, 18, 0.35);
+}
+
+.rename-form .field-label {
+  margin-bottom: 0.45rem;
+}
+
+.rename-form-row {
+  display: flex;
+  align-items: stretch;
+  gap: 0.5rem;
+}
+
+.rename-form-row .text-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.rename-form-row .btn {
+  flex-shrink: 0;
+  align-self: stretch;
+  white-space: nowrap;
+}
+
+.rename-form-hint {
+  margin: 0.55rem 0 0;
+  font-size: 0.78rem;
 }
 
 .copy-row {

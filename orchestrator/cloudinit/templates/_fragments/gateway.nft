@@ -1,0 +1,15 @@
+#!/usr/sbin/nft -f
+# Exit: SNAT on wg0 (conntrack) + forward tailscale0 <-> wg0. Internet NAT on uplink VPS.
+table ip gw_nat {
+  chain postrouting {
+    type nat hook postrouting priority srcnat; policy accept;
+    ip saddr 100.64.0.0/10 oifname "wg0" masquerade
+  }
+}
+table ip deeporc_exit {
+  chain forward {
+    type filter hook forward priority filter; policy accept;
+    iifname "tailscale0" oifname "wg0" accept
+    iifname "wg0" oifname "tailscale0" accept
+  }
+}

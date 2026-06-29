@@ -42,6 +42,27 @@ def sort_peers_by_connectivity(
     return rows
 
 
+def gateway_headscale_display_name(gateway: Gateway, exit_node: HeadscaleNode | None = None) -> str:
+    if exit_node and exit_node.hostname:
+        return exit_node.hostname
+    return gateway.tailscale_hostname or gateway.name
+
+
+def match_gateway_exit_node(
+    gateway: Gateway,
+    nodes_by_ip: dict[str, HeadscaleNode],
+    nodes_by_hostname: dict[str, HeadscaleNode],
+) -> HeadscaleNode | None:
+    if gateway.exit_node_id not in {"", "pending"}:
+        node = nodes_by_ip.get(gateway.exit_node_id)
+        if node:
+            return node
+    for key in (gateway.tailscale_hostname, gateway.name):
+        if key and key in nodes_by_hostname:
+            return nodes_by_hostname[key]
+    return None
+
+
 def partition_exit_nodes(
     headscale_nodes: list[HeadscaleNode],
     gateways: list[Gateway],

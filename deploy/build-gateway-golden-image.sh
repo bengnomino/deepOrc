@@ -83,11 +83,15 @@ echo "==> Installing gateway-agent and init scripts"
 incus_exec mkdir -p /opt/gateway-agent /etc/wireguard /etc/nftables.d
 incus_push "$AGENT_BIN" /opt/gateway-agent/gateway-agent
 incus_push "$SCRIPT_DIR/openwrt/wg-up.sh" /opt/gateway-agent/wg-up.sh
+incus_push "$SCRIPT_DIR/openwrt/exit-via-wg.sh" /opt/gateway-agent/exit-via-wg.sh
+incus_push "$SCRIPT_DIR/nftables/gateway-openwrt.nft" /etc/nftables.d/gateway.nft
 incus_push "$SCRIPT_DIR/openwrt/gateway-agent.init" /etc/init.d/gateway-agent
 incus_push "$SCRIPT_DIR/openwrt/gateway-wg.init" /etc/init.d/gateway-wg
 incus_push "$SCRIPT_DIR/openwrt/tailscale-up.init" /etc/init.d/tailscale-up
-incus_exec chmod 755 /opt/gateway-agent/gateway-agent /opt/gateway-agent/wg-up.sh
-incus_exec chmod 755 /etc/init.d/gateway-agent /etc/init.d/gateway-wg /etc/init.d/tailscale-up
+incus_push "$SCRIPT_DIR/openwrt/exit-via-wg.init" /etc/init.d/exit-via-wg
+incus_exec chmod 755 /opt/gateway-agent/gateway-agent /opt/gateway-agent/wg-up.sh /opt/gateway-agent/exit-via-wg.sh
+incus_exec chmod 755 /etc/init.d/gateway-agent /etc/init.d/gateway-wg /etc/init.d/tailscale-up /etc/init.d/exit-via-wg
+incus_exec rc-update add exit-via-wg default 2>/dev/null || true
 
 echo "==> Verifying baked stack"
 incus_exec test -x /opt/gateway-agent/gateway-agent

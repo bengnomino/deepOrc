@@ -30,10 +30,13 @@ log:
 dns:
   magic_dns: true
   base_domain: @HEADSCALE_BASE_DOMAIN@
+  # Force clients onto MagicDNS (100.100.100.100); with exit node, queries resolve on the exit node.
+  override_local_dns: true
   nameservers:
     global:
       - 1.1.1.1
       - 1.0.0.1
+    # Do not set use_with_exit_node — that would let clients query 1.1.1.1 directly (DNS leak).
 # Caddy reverse-proxies Headscale for public clients; gateways use @ORCH_HOST_IP@:8080
 trusted_proxies:
   - 127.0.0.1/32

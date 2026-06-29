@@ -28,7 +28,7 @@ def test_approve_registration_request():
     nodes_json = json.dumps([{"id": 9, "name": "android-phone"}])
     with patch(
         "orchestrator.headscale.client._run_headscale",
-        side_effect=[register_json, "", "", "[]", nodes_json, ""],
+        side_effect=[register_json, "", "[]", nodes_json, ""],
     ) as run:
         node = approve_registration_request(key)
     assert node.node_id == 9
@@ -37,7 +37,14 @@ def test_approve_registration_request():
     first = run.call_args_list[0].args[0]
     assert first[:2] == ["auth", "register"]
     assert first[3] == key
-    assert run.call_args_list[1].args[0][:3] == ["nodes", "tag", "-i"]
+    assert run.call_args_list[1].args[0] == [
+        "nodes",
+        "approve-routes",
+        "-i",
+        "9",
+        "-r",
+        "",
+    ]
     assert run.call_args_list[-1].args[0][:4] == ["nodes", "rename", "ex-000", "-i"]
 
 
@@ -56,7 +63,6 @@ def test_approve_registration_falls_back_to_nodes_register():
         side_effect=[
             HeadscaleError("unknown auth"),
             register_json,
-            "",
             "",
             "[]",
             nodes_json,

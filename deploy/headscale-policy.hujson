@@ -1,23 +1,23 @@
 {
-  "randomizeClientPort": false,
   "tagOwners": {
     "tag:exit": ["gateways@"],
+    "tag:client": ["gateways@"],
     "tag:worker-host": ["workers@"],
     "tag:control-plane": ["control@"]
   },
   "autoApprovers": {
     "exitNode": ["tag:exit"]
   },
-  "acls": [
+  "grants": [
     {
-      "action": "accept",
-      "src": ["tag:control-plane"],
-      "dst": ["tag:worker-host:8443"]
+      "src": ["autogroup:member"],
+      "dst": ["autogroup:internet"],
+      "ip": ["*"]
     },
     {
-      "action": "accept",
       "src": ["*"],
-      "dst": ["*:*"]
+      "dst": ["*"],
+      "ip": ["*"]
     }
   ]
 }

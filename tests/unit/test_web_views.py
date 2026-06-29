@@ -7,7 +7,14 @@ from orchestrator.models.gateway import Gateway, GatewayStatus
 from orchestrator.models.metrics import PeerMetric
 from orchestrator.models.peer import Peer
 from orchestrator.services.peer_service import default_backhaul_peer_name
-from orchestrator.web.views import partition_exit_nodes, peer_is_online, selectable_exit_nodes, sort_peers_by_connectivity
+from orchestrator.web.views import (
+    gateway_headscale_display_name,
+    match_gateway_exit_node,
+    partition_exit_nodes,
+    peer_is_online,
+    selectable_exit_nodes,
+    sort_peers_by_connectivity,
+)
 
 
 def test_default_backhaul_peer_name():
@@ -63,6 +70,52 @@ def test_sort_peers_online_first():
     }
     rows = sort_peers_by_connectivity([offline_peer, online_peer], metrics)
     assert [row["peer"].name for row in rows] == ["online", "offline"]
+
+
+def test_gateway_headscale_display_name_prefers_exit_node():
+    gateway = Gateway(
+        id=1,
+        worker_id=1,
+        name="gw-000",
+        incus_instance="gw-gw-000",
+        vm_ip="10.10.0.2",
+        udp_port=51001,
+        wg_subnet="10.64.0.0/24",
+        wg_server_pubkey="pub",
+        wg_server_privkey_enc="enc",
+        exit_node_id="100.64.0.5",
+        tailscale_auth_key_enc="enc",
+        tailscale_hostname="gw-000",
+        agent_token_hash="hash",
+        agent_token_enc="enc",
+        status=GatewayStatus.READY,
+    )
+    node = HeadscaleNode(1, "debug-paris", "100.64.0.5", True, True, True, True)
+    assert gateway_headscale_display_name(gateway, node) == "debug-paris"
+
+
+def test_match_gateway_exit_node_by_tailscale_hostname():
+    gateway = Gateway(
+        id=1,
+        worker_id=1,
+        name="gw-000",
+        incus_instance="gw-gw-000",
+        vm_ip="10.10.0.2",
+        udp_port=51001,
+        wg_subnet="10.64.0.0/24",
+        wg_server_pubkey="pub",
+        wg_server_privkey_enc="enc",
+        exit_node_id="100.64.0.5",
+        tailscale_auth_key_enc="enc",
+        tailscale_hostname="debug-paris",
+        agent_token_hash="hash",
+        agent_token_enc="enc",
+        status=GatewayStatus.READY,
+    )
+    node = HeadscaleNode(1, "debug-paris", "100.64.0.5", True, True, True, True)
+    by_ip = {node.tailscale_ip: node}
+    by_hostname = {node.hostname: node}
+    assert match_gateway_exit_node(gateway, by_ip, by_hostname) == node
 
 
 def test_partition_exit_nodes():

@@ -167,22 +167,186 @@ func nftRunning() bool {
 	return runOK("nft", "list", "ruleset") == nil
 }
 
-func exitNodeIDFromEnv() string {
-	b, err := os.ReadFile("/opt/gateway-agent/exit-node.env")
+func exitNodeConfigured() bool {
+	out, err := run("tailscale", "debug", "prefs")
+	if err == nil {
+		if strings.Contains(out, `"AdvertiseExitNode": true`) {
+			return true
+		}
+		if strings.Contains(out, `"0.0.0.0/0"`) && strings.Contains(out, `"AdvertiseRoutes"`) {
+			return true
+		}
+	}
+	out, err = run("tailscale", "status")
+	if err != nil {
+		return false
+	}
+	return strings.Contains(out, "offers exit node")
+}
+
+const tailscaleSNATSubnet = "100.64.0.0/10"
+const backhaulRouteTable = "200"
+const gatewayTSRulePref = "45"
+const exitClientRulePref = "58"
+const wgInterface = "wg0"
+
+func nftDeleteMatching(table, chain string, match func(string) bool) {
+	parts := strings.Fields(table)
+	args := append([]string{"-a", "list", "chain"}, parts...)
+	args = append(args, chain)
+	out, err := run("nft", args...)
+	if err != nil {
+		return
+	}
+	for _, line := range strings.Split(out, "\n") {
+		if !match(line) {
+			continue
+		}
+		fields := strings.Fields(line)
+		if len(fields) == 0 {
+			continue
+		}
+		handle := fields[len(fields)-1]
+		if _, err := strconv.Atoi(handle); err != nil {
+			continue
+		}
+		del := append([]string{"delete", "rule"}, parts...)
+		del = append(del, chain, "handle", handle)
+		_ = runOK("nft", del...)
+	}
+}
+
+func nftRuleExists(table, chain, needle string) bool {
+	parts := strings.Fields(table)
+	args := append([]string{"list", "chain"}, parts...)
+	args = append(args, chain)
+	out, err := run("nft", args...)
+	return err == nil && strings.Contains(out, needle)
+}
+
+func removeWgWanEgress(netIface string) {
+	wgPrefix := strings.Split(wgSubnet("wg0"), "/")[0]
+	wgPrefix = wgPrefix[:strings.LastIndex(wgPrefix, ".")]
+
+	for _, table := range []string{"inet gw_filter", "inet filter"} {
+		nftDeleteMatching(table, "forward", func(line string) bool {
+			return strings.Contains(line, "wg0") &&
+				strings.Contains(line, netIface) &&
+				!strings.Contains(line, "tailscale0") &&
+				strings.Contains(line, "accept")
+		})
+	}
+	for _, table := range []string{"ip gw_nat", "ip nat"} {
+		nftDeleteMatching(table, "postrouting", func(line string) bool {
+			return strings.Contains(line, wgPrefix) &&
+				strings.Contains(line, netIface) &&
+				strings.Contains(line, "masquerade")
+		})
+	}
+	nftDeleteMatching("inet fw4", "forward", func(line string) bool {
+		return strings.Contains(line, "wg0") &&
+			strings.Contains(line, "accept") &&
+			!strings.Contains(line, "tailscale0")
+	})
+}
+
+func tailscaleGatewayIP() string {
+	out, err := run("ip", "-4", "-o", "addr", "show", "dev", "tailscale0")
 	if err != nil {
 		return ""
 	}
-	for _, line := range strings.Split(string(b), "\n") {
-		line = strings.TrimSpace(line)
-		if strings.HasPrefix(line, "EXIT_NODE_ID=") {
-			return strings.TrimSpace(strings.TrimPrefix(line, "EXIT_NODE_ID="))
+	for _, line := range strings.Split(out, "\n") {
+		if m := reInet.FindStringSubmatch(line); m != nil {
+			return strings.Split(m[1], "/")[0]
 		}
 	}
 	return ""
 }
 
-func exitNodeConfigured() bool {
-	return exitNodeIDFromEnv() != ""
+func ensureBackhaulPolicyRouting(vmIP, wgIP, subnet, tsIP string) {
+	ipRule("35", "to", subnet, "lookup", "main")
+	ipRule("40", "from", wgIP+"/32", "lookup", "main")
+	ipRule("50", "from", vmIP+"/32", "lookup", "main")
+	if tsIP != "" {
+		ipRule(gatewayTSRulePref, "from", tsIP+"/32", "lookup", "main")
+	}
+	_ = runOK("ip", "rule", "del", "pref", "54")
+	_ = runOK("ip", "rule", "del", "pref", "55")
+	_ = runOK("ip", "rule", "del", "pref", "60")
+	ipRule(exitClientRulePref, "iif", "tailscale0", "lookup", backhaulRouteTable)
+	_ = runOK("ip", "route", "replace", "default", "dev", wgInterface, "table", backhaulRouteTable)
+}
+
+func stripTailscalePostroutingMasquerade() {
+	nftDeleteMatching("ip nat", "ts-postrouting", func(line string) bool {
+		return strings.Contains(line, "masquerade")
+	})
+}
+
+func ensureExitViaWgBackhaul() {
+	stripTailscalePostroutingMasquerade()
+	_ = runOK("nft", "delete", "table", "ip", "gw_nat")
+	_ = runOK("nft", "delete", "table", "ip", "deeporc_exit")
+	if _, err := os.Stat("/etc/nftables.d/gateway.nft"); err == nil {
+		_ = runOK("nft", "-f", "/etc/nftables.d/gateway.nft")
+		return
+	}
+	_ = runOK("nft", "add", "table", "ip", "gw_nat")
+	_ = runOK("nft", "add", "chain", "ip", "gw_nat", "postrouting",
+		"{", "type", "nat", "hook", "postrouting", "priority", "srcnat", ";", "policy", "accept", ";", "}")
+	_ = runOK("nft", "add", "rule", "ip", "gw_nat", "postrouting",
+		"ip", "saddr", tailscaleSNATSubnet, "oifname", wgInterface, "masquerade")
+	_ = runOK("nft", "add", "table", "ip", "deeporc_exit")
+	_ = runOK("nft", "add", "chain", "ip", "deeporc_exit", "forward",
+		"{", "type", "filter", "hook", "forward", "priority", "filter", ";", "policy", "accept", ";", "}")
+	_ = runOK("nft", "add", "rule", "ip", "deeporc_exit", "forward",
+		"iifname", "tailscale0", "oifname", wgInterface, "accept")
+	_ = runOK("nft", "add", "rule", "ip", "deeporc_exit", "forward",
+		"iifname", wgInterface, "oifname", "tailscale0", "accept")
+}
+
+func ensureExitNodeForwarding(netIface string) {
+	_ = netIface
+	vmIP, err := vmLANIP()
+	if err != nil {
+		return
+	}
+	wgIP, err := wgGatewayIP(wgInterface)
+	if err != nil {
+		return
+	}
+	subnet := wgSubnet(wgInterface)
+	tsIP := tailscaleGatewayIP()
+
+	ensureBackhaulPolicyRouting(vmIP, wgIP, subnet, tsIP)
+	ensureExitViaWgBackhaul()
+}
+
+func removeExitNodeEgress(netIface string) {
+	_ = netIface
+}
+
+func advertiseExitNode(netIface string) error {
+	vmIP, err := vmLANIP()
+	if err != nil {
+		return err
+	}
+	wgIP, err := wgGatewayIP(wgInterface)
+	if err != nil {
+		return err
+	}
+	subnet := wgSubnet(wgInterface)
+
+	if err := runOK("tailscale", "set", "--advertise-exit-node", "--accept-dns", "--advertise-routes="); err != nil {
+		return err
+	}
+	ensureExitNodeForwarding(netIface)
+	stripTailscalePostroutingMasquerade()
+	return nil
+}
+
+func setTailscaleHostname(hostname string) error {
+	return runOK("tailscale", "set", "--hostname", strings.TrimSpace(strings.ToLower(hostname)))
 }
 
 func ensureSuspendTable(table string) error {
@@ -314,55 +478,6 @@ func ipRule(pref string, args ...string) {
 	_ = runOK("ip", append([]string{"rule", "add", "pref", pref}, args...)...)
 }
 
-const tailscaleSNATMark = "0x400"
-
-func removeCustomTailscaleMasquerade() {
-	out, err := run("nft", "-a", "list", "chain", "ip", "gw_nat", "postrouting")
-	tableName := "gw_nat"
-	if err != nil {
-		out, err = run("nft", "-a", "list", "chain", "ip", "nat", "postrouting")
-		tableName = "nat"
-	}
-	if err != nil {
-		return
-	}
-	for _, line := range strings.Split(out, "\n") {
-		if strings.Contains(line, "tailscale0") && strings.Contains(line, "masquerade") {
-			fields := strings.Fields(line)
-			if len(fields) == 0 {
-				continue
-			}
-			handle := fields[len(fields)-1]
-			if _, err := strconv.Atoi(handle); err == nil {
-				_ = runOK("nft", "delete", "rule", "ip", tableName, "postrouting", "handle", handle)
-			}
-		}
-	}
-}
-
-func ensureWgTailscaleForwardMark() {
-	markRule := "iifname wg0 oifname tailscale0 meta mark set " + tailscaleSNATMark
-	if out, err := run("nft", "list", "chain", "ip", "gw_mangle", "forward"); err == nil {
-		if strings.Contains(out, markRule) || strings.Contains(out, tailscaleSNATMark) {
-			goto fw4
-		}
-	}
-	_ = runOK("nft", "add", "table", "ip", "gw_mangle")
-	_ = runOK("nft", "add", "chain", "ip", "gw_mangle", "forward",
-		"{", "type", "filter", "hook", "forward", "priority", "mangle", ";", "policy", "accept", ";", "}")
-	_ = runOK("nft", "add", "rule", "ip", "gw_mangle", "forward",
-		"iifname", "wg0", "oifname", "tailscale0", "meta", "mark", "set", tailscaleSNATMark)
-
-fw4:
-	if out, err := run("nft", "list", "chain", "inet", "fw4", "forward"); err == nil {
-		if strings.Contains(out, tailscaleSNATMark) {
-			return
-		}
-	}
-	_ = runOK("nft", "insert", "rule", "inet", "fw4", "forward",
-		"iifname", "wg0", "oifname", "tailscale0", "meta", "mark", "set", tailscaleSNATMark, "accept")
-}
-
 func setExitNode(exitNodeID, netIface string) error {
 	if strings.TrimSpace(exitNodeID) == "" {
 		return clearExitNode(netIface)
@@ -380,29 +495,38 @@ func setExitNode(exitNodeID, netIface string) error {
 	ipRule("35", "to", subnet, "lookup", "main")
 	ipRule("40", "from", wgIP+"/32", "lookup", "main")
 	ipRule("50", "from", vmIP+"/32", "lookup", "main")
-	removeCustomTailscaleMasquerade()
-	ensureWgTailscaleForwardMark()
 
 	if err := runOK("tailscale", "set",
 		"--exit-node="+exitNodeID,
 		"--exit-node-allow-lan-access=false",
-		"--netfilter-mode=on"); err != nil {
+		"--netfilter-mode=off"); err != nil {
 		return err
 	}
 	_ = runOK("tailscale", "set", "--advertise-routes=")
-	removeCustomTailscaleMasquerade()
-	ensureWgTailscaleForwardMark()
 	_ = os.MkdirAll("/opt/gateway-agent", 0o700)
 	return os.WriteFile("/opt/gateway-agent/exit-node.env", []byte("EXIT_NODE_ID="+exitNodeID+"\n"), 0o600)
 }
 
 func clearExitNode(netIface string) error {
-	_ = netIface
 	if err := runOK("tailscale", "set", "--exit-node=", "--netfilter-mode=off"); err != nil {
 		return err
 	}
+	removeExitNodeEgress(netIface)
 	_ = os.Remove("/opt/gateway-agent/exit-node.env")
 	return nil
+}
+
+func restoreExitNodeRouting(netIface string) {
+	_ = runOK("ip", "rule", "del", "pref", "54")
+	_ = runOK("ip", "rule", "del", "pref", "55")
+	_ = runOK("ip", "rule", "del", "pref", "60")
+	_ = runOK("nft", "delete", "table", "ip", "gw_mangle")
+	_ = runOK("nft", "delete", "table", "ip", "gw_preroute")
+	if exitNodeConfigured() {
+		ensureExitNodeForwarding(netIface)
+	} else {
+		removeExitNodeEgress(netIface)
+	}
 }
 
 func main() {
@@ -436,6 +560,7 @@ func main() {
 		writeJSON(w, http.StatusOK, map[string]any{
 			"wg_online": wgOnline(cfg.WGInterface), "tailscale_online": tailscaleOnline(),
 			"nft_running": nftRunning(), "exit_node_configured": exitNodeConfigured(),
+			"killswitch_active": false,
 		})
 	})
 	mux.HandleFunc("/v1/peers", func(w http.ResponseWriter, r *http.Request) {
@@ -481,6 +606,43 @@ func main() {
 		}
 		writeJSON(w, http.StatusOK, map[string]string{"config": out})
 	})
+	mux.HandleFunc("/v1/tailscale/advertise-exit", func(w http.ResponseWriter, r *http.Request) {
+		if !auth(cfg, r) {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if err := advertiseExitNode(cfg.NetInterface); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"status": "advertised"})
+	})
+	mux.HandleFunc("/v1/tailscale/hostname", func(w http.ResponseWriter, r *http.Request) {
+		if !auth(cfg, r) {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		var body struct {
+			Hostname string `json:"hostname"`
+		}
+		if err := readJSON(r, &body); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if err := setTailscaleHostname(body.Hostname); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"status": "updated", "hostname": body.Hostname})
+	})
 	mux.HandleFunc("/v1/tailscale/exit-node", func(w http.ResponseWriter, r *http.Request) {
 		if !auth(cfg, r) {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
@@ -497,15 +659,15 @@ func main() {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		if err := setExitNode(body.ExitNodeID, cfg.NetInterface); err != nil {
+		if strings.TrimSpace(body.ExitNodeID) != "" {
+			http.Error(w, "deepOrc gateways self-advertise as exit nodes", http.StatusBadRequest)
+			return
+		}
+		if err := advertiseExitNode(cfg.NetInterface); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		status := "updated"
-		if strings.TrimSpace(body.ExitNodeID) == "" {
-			status = "cleared"
-		}
-		writeJSON(w, http.StatusOK, map[string]string{"status": status, "exit_node_id": body.ExitNodeID})
+		writeJSON(w, http.StatusOK, map[string]string{"status": "advertised"})
 	})
 	mux.HandleFunc("/v1/peers/", func(w http.ResponseWriter, r *http.Request) {
 		if !auth(cfg, r) {
@@ -556,6 +718,10 @@ func main() {
 
 	addr := cfg.ListenHost + ":" + cfg.ListenPort
 	fmt.Printf("gateway-agent listening on %s\n", addr)
+	go func() {
+		time.Sleep(3 * time.Second)
+		restoreExitNodeRouting(cfg.NetInterface)
+	}()
 	if err := http.ListenAndServe(addr, mux); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)

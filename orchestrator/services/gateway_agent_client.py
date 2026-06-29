@@ -151,7 +151,7 @@ class GatewayAgentClient:
             "--",
             "sh",
             "-c",
-            "/usr/sbin/tailscale set --advertise-exit-node --netfilter-mode=off",
+            "/usr/sbin/tailscale set --advertise-exit-node --accept-dns --netfilter-mode=off",
         ]
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=120, check=False)
         if result.returncode != 0:
@@ -160,12 +160,66 @@ class GatewayAgentClient:
             )
         return {"status": "advertised"}
 
+    def set_tailscale_hostname(self, hostname: str) -> dict[str, Any]:
+        last_err: Exception | None = None
+        try:
+            return self._request(
+                "POST", "/v1/tailscale/hostname", json={"hostname": hostname}
+            )
+        except httpx.HTTPStatusError as exc:
+            last_err = exc
+            if exc.response.status_code != 404 or not self._incus_instance:
+                raise
+        except Exception as exc:
+            last_err = exc
+        if self._incus_instance:
+            host_q = hostname.replace("'", "'\\''")
+            cmd = [
+                "incus",
+                "exec",
+                self._incus_instance,
+                "--",
+                "sh",
+                "-c",
+                f"/usr/sbin/tailscale set --hostname='{host_q}'",
+            ]
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=120, check=False)
+            if result.returncode != 0:
+                raise RuntimeError(
+                    result.stderr.strip() or result.stdout.strip() or "set hostname failed"
+                )
+            return {"status": "updated", "hostname": hostname}
+        if last_err is not None:
+            raise last_err
+        return {"status": "updated", "hostname": hostname}
+
     def set_exit_node(self, exit_node_id: str) -> dict[str, Any]:
         """Legacy API — deepOrc gateways self-advertise as exit nodes."""
         return self.advertise_exit_node()
 
     def clear_exit_node(self) -> dict[str, Any]:
         return {"status": "noop"}
+
+    def run_exit_via_wg(self) -> None:
+        """Apply exit routing/DNS/firewall script inside the gateway VM."""
+        if not self._incus_instance:
+            return
+        result = subprocess.run(
+            [
+                "incus",
+                "exec",
+                self._incus_instance,
+                "--",
+                "/opt/gateway-agent/exit-via-wg.sh",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=120,
+            check=False,
+        )
+        if result.returncode != 0:
+            msg = (result.stderr or result.stdout or "exit-via-wg failed").strip()
+            raise RuntimeError(msg)
 
     def wait_until_healthy(
         self,
