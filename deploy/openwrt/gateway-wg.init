@@ -1,0 +1,12 @@
+#!/bin/sh /etc/rc.common
+# WireGuard wg0 (no wg-quick on OpenWrt)
+START=25
+STOP=85
+USE_PROCD=1
+
+start_service() {
+	[ -f /etc/wireguard/wg0.conf ] || return 1
+	procd_open_instance
+	procd_set_param command /opt/gateway-agent/wg-up.sh
+	procd_close_instance
+}

@@ -1,0 +1,16 @@
+[Unit]
+Description=Orchtest worker heartbeat (stats → control plane)
+After=network-online.target tailscaled.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/deeporc/worker.env
+Environment=APP_DIR=@APP_DIR@
+Environment=WORKER_ENV_FILE=/etc/deeporc/worker.env
+ExecStart=/usr/bin/python3 @APP_DIR@/deploy/worker-heartbeat.py
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

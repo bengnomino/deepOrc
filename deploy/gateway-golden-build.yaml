@@ -1,0 +1,57 @@
+#cloud-config
+# Bake minimal gateway stack on Alpine Linux (OpenRC, static Tailscale, agent only).
+hostname: gw-golden-build
+
+write_files:
+  - path: /root/install-tailscale-static.sh
+    permissions: '0755'
+    content: |
+__INSTALL_TAILSCALE_SCRIPT__
+
+  - path: /etc/init.d/tailscaled
+    permissions: '0755'
+    content: |
+      #!/sbin/openrc-run
+      name="tailscaled"
+      description="Tailscale daemon"
+      supervisor=supervise-daemon
+      command="/usr/local/sbin/tailscaled"
+      command_args="--state=/var/lib/tailscale/tailscaled.state --socket=/var/run/tailscale/tailscaled.sock"
+      command_background=true
+      pidfile="/run/tailscaled.pid"
+      depend() { need net; }
+
+  - path: /etc/init.d/gateway-agent
+    permissions: '0755'
+    content: |
+      #!/sbin/openrc-run
+      name="gateway-agent"
+      description="Gateway Agent API"
+      supervisor=supervise-daemon
+      command="/bin/sh"
+      command_args="-c 'set -a; [ -f /opt/gateway-agent/config.env ] && . /opt/gateway-agent/config.env; set +a; exec /opt/gateway-agent/venv/bin/uvicorn gateway_agent.main:app --host \"${LISTEN_HOST:-0.0.0.0}\" --port \"${LISTEN_PORT:-8081}\"'"
+      depend() {
+        need net
+        after wg-quick.wg0
+      }
+
+  - path: /opt/gateway-agent/config.env
+    permissions: '0600'
+    content: |
+      AGENT_TOKEN=build-placeholder
+      ORCH_ALLOWED_IP=127.0.0.1
+      LISTEN_HOST=127.0.0.1
+      LISTEN_PORT=8081
+
+runcmd:
+  - apk add --no-cache curl ca-certificates
+  - ash /root/install-tailscale-static.sh
+  - install -d -m 755 /var/lib/tailscale /var/run/tailscale
+  - apk add --no-cache wireguard-tools-wg wireguard-tools nftables python3 py3-pip py3-virtualenv
+  - python3 -m venv /opt/gateway-agent/venv
+  - /opt/gateway-agent/venv/bin/pip install --no-cache-dir fastapi 'uvicorn[standard]' pydantic-settings
+  - /opt/gateway-agent/venv/bin/pip install --no-cache-dir --no-deps __GATEWAY_AGENT_WHEEL_URL__
+  - rc-update add tailscaled default
+  - rc-update add gateway-agent default
+  - rc-service tailscaled start
+  - apk cache clean

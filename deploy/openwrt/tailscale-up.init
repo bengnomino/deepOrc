@@ -1,0 +1,20 @@
+#!/bin/sh /etc/rc.common
+# Tailscale login to Headscale (tailscaled started by package init)
+START=30
+STOP=80
+
+start() {
+	[ -f /opt/gateway-agent/tailscale.env ] || return 0
+	. /opt/gateway-agent/tailscale.env
+	/usr/sbin/tailscale up \
+		--login-server="$HEADSCALE_URL" \
+		--authkey="$TAILSCALE_AUTH_KEY" \
+		--hostname="$GATEWAY_NAME" \
+		--advertise-exit-node \
+		--accept-routes \
+		--netfilter-mode=off
+}
+
+stop() {
+	/usr/sbin/tailscale down 2>/dev/null || true
+}

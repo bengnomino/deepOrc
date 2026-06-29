@@ -1,0 +1,214 @@
+{% extends "base.html" %}
+{% block content %}
+<header class="page-hero">
+  <div>
+    <p class="eyebrow">Control plane</p>
+    <h1>Dashboard</h1>
+  </div>
+  <div class="header-actions">
+    <button type="button" class="btn btn-glow" id="btn-new-gateway">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/></svg>
+      Nuovo gateway
+    </button>
+    <button type="button" class="btn btn-ghost" id="btn-add-worker">Aggiungi worker</button>
+  </div>
+</header>
+
+{% if flash_error %}
+<div class="alert error">{{ flash_error }}</div>
+{% endif %}
+
+{% if headscale_error %}
+<div class="alert error">{{ headscale_error }}</div>
+{% endif %}
+
+<section class="card card-glass notice">
+  <p class="muted">deepOrc: ogni gateway <strong>è</strong> un exit node Tailscale. Il peer WireGuard backhaul viene creato automaticamente.</p>
+</section>
+
+{% for section in workers %}
+<section class="card card-glass worker-section" data-worker-id="{{ section.worker.id }}">
+  <div class="card-head worker-head row-head">
+    <h2 class="worker-title">
+      {% if section.status.value == 'online' %}
+      <span class="listen-dot worker-status-dot" title="Online"></span>
+      {% else %}
+      <span class="worker-dot-offline worker-status-dot" title="Offline"></span>
+      {% endif %}
+      {{ section.worker.display_name }}
+    </h2>
+    {% if section.status.value == 'online' %}
+    <a href="/orchestrator/ui/workers/{{ section.worker.id }}/create-gateway" class="btn btn-sm btn-glow">
+      Crea gateway
+    </a>
+    {% else %}
+    <span class="btn btn-sm btn-glow is-disabled" title="Worker offline">Crea gateway</span>
+    {% endif %}
+  </div>
+
+  <div class="host-stats-grid host-stats-grid-compact worker-stats-grid">
+    <div class="host-stat">
+      <span class="stat-label">CPU</span>
+      <span class="stat-value worker-cpu">—</span>
+      <div class="meter" aria-hidden="true"><span class="worker-cpu-bar"></span></div>
+    </div>
+    <div class="host-stat">
+      <span class="stat-label">RAM</span>
+      <span class="stat-value worker-ram">—</span>
+      <div class="meter" aria-hidden="true"><span class="worker-ram-bar"></span></div>
+    </div>
+    <div class="host-stat">
+      <span class="stat-label">Network in</span>
+      <span class="stat-value worker-rx">—</span>
+      <div class="meter meter-spacer" aria-hidden="true"><span></span></div>
+    </div>
+    <div class="host-stat">
+      <span class="stat-label">Network out</span>
+      <span class="stat-value worker-tx">—</span>
+      <div class="meter meter-spacer" aria-hidden="true"><span></span></div>
+    </div>
+  </div>
+
+  {% if section.gateways %}
+  <div class="gateway-grid worker-gateway-grid">
+    {% for row in section.gateways %}
+    <article class="gateway-tile{% if row.gateway.status.value == 'deleting' %} gateway-tile-deleting{% endif %}">
+      <div class="gateway-tile-body">
+        <div class="gateway-tile-top">
+          {% if row.gateway.status.value == 'deleting' %}
+          <span class="gateway-name">{{ row.gateway.name }}</span>
+          {% else %}
+          <a href="/orchestrator/ui/gateways/{{ row.gateway.id }}" class="gateway-name">{{ row.gateway.name }}</a>
+          {% endif %}
+          <span class="status-pill status-{{ row.gateway.status.value }}">
+            {% if row.gateway.status.value == 'deleting' %}eliminazione{% else %}{{ row.gateway.status.value }}{% endif %}
+          </span>
+        </div>
+        <div class="signal-row">
+          <span class="signal {% if row.tailscale_online %}on{% endif %}" title="Tailscale">TS</span>
+          <span class="signal {% if row.wg_online %}on{% endif %}" title="WireGuard">WG</span>
+          <span class="signal {% if row.peer_online %}on{% endif %}" title="Peer backhaul">{{ row.peer_online }}/{{ row.peer_total }}</span>
+        </div>
+        {% if row.gateway.exit_node_id != 'pending' %}
+        <div class="gateway-exit-callout">
+          <div class="gateway-exit-callout-head">
+            <span class="gateway-exit-callout-icon" aria-hidden="true">↗</span>
+            <span class="gateway-exit-callout-name">Exit node: {{ row.gateway.name }}</span>
+            {% if row.exit_node %}
+            <span class="status-pill {% if row.exit_node.online %}online{% else %}offline{% endif %}">
+              {% if row.exit_node.online %}online{% else %}offline{% endif %}
+            </span>
+            {% endif %}
+          </div>
+          <code class="gateway-exit-callout-ip">{{ row.gateway.exit_node_id }}</code>
+        </div>
+        {% else %}
+        <div class="muted small-hint">Exit node in attesa di provisioning…</div>
+        {% endif %}
+      </div>
+      {% if row.gateway.status.value != 'deleting' %}
+      <a href="/orchestrator/ui/gateways/{{ row.gateway.id }}" class="gateway-tile-open btn btn-glow">Apri →</a>
+      {% endif %}
+      {% if row.gateway.status.value == 'deleting' %}
+      <div class="gateway-tile-overlay" aria-live="polite">
+        <span class="gateway-tile-overlay-label">Eliminazione in corso</span>
+      </div>
+      {% endif %}
+    </article>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="empty-state worker-empty">
+    <p class="muted">Nessun gateway su questo worker.</p>
+  </div>
+  {% endif %}
+</section>
+{% endfor %}
+
+{% if not workers %}
+<section class="card card-glass">
+  <div class="empty-state">
+    <p>Nessun worker registrato. Usa «Aggiungi worker» per generare il comando di join.</p>
+  </div>
+</section>
+{% endif %}
+
+<dialog id="gateway-modal" class="modal">
+  <form method="post" action="/orchestrator/ui/gateways/create" class="modal-card" id="gateway-create-form">
+    <div class="modal-header">
+      <h2>Nuovo gateway</h2>
+      <button type="button" class="btn btn-icon modal-close" id="gateway-modal-close" aria-label="Chiudi">✕</button>
+    </div>
+    <div id="gateway-modal-body">
+      <div id="gateway-modal-error" class="alert error" hidden></div>
+      <div id="gateway-worker-picker" class="worker-picker"></div>
+      <input type="hidden" name="worker_id" id="gateway-worker-id" value="">
+      <div class="modal-actions">
+        <button type="submit" class="btn btn-glow" id="gateway-create-submit">Crea gateway</button>
+      </div>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="worker-modal" class="modal">
+  <form method="dialog" class="modal-card" id="worker-enroll-form">
+    <div class="modal-header">
+      <h2>Aggiungi worker</h2>
+      <button type="button" class="btn btn-icon modal-close" id="worker-modal-close" aria-label="Chiudi">✕</button>
+    </div>
+    <div id="worker-modal-loading" class="muted">Generazione auth key e comando…</div>
+    <div id="worker-modal-error" class="alert error" hidden></div>
+    <div id="worker-modal-body" hidden>
+      <p class="muted">Worker <strong id="worker-enroll-label"></strong> — incolla il comando come root sulla nuova VPS.</p>
+      <label class="field-label">
+        Auth key Tailscale
+        <div class="copy-row">
+          <input id="worker-enroll-key" readonly>
+          <button type="button" class="btn btn-sm" id="worker-enroll-copy-key">Copia</button>
+        </div>
+      </label>
+      <label class="field-label">
+        Comando
+        <div class="copy-row">
+          <textarea id="worker-enroll-command" rows="8" readonly></textarea>
+          <button type="button" class="btn btn-sm" id="worker-enroll-copy-cmd">Copia</button>
+        </div>
+      </label>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="exit-node-modal" class="modal">
+  <form method="dialog" class="modal-card">
+    <div class="modal-header">
+      <h2>Auth key exit node</h2>
+      <button type="button" class="btn btn-icon modal-close" id="exit-node-modal-close" aria-label="Chiudi">✕</button>
+    </div>
+    <div id="exit-node-modal-loading" class="muted">Generazione auth key…</div>
+    <div id="exit-node-modal-error" class="alert error" hidden></div>
+    <div id="exit-node-modal-body" hidden>
+      <p class="muted">Tag <code id="exit-node-tag"></code> — usa su Android con login server Headscale.</p>
+      <label class="field-label">
+        Auth key
+        <div class="copy-row">
+          <input id="exit-node-key" readonly>
+          <button type="button" class="btn btn-sm" id="exit-node-copy-key">Copia</button>
+        </div>
+      </label>
+      <label class="field-label">
+        Comando
+        <div class="copy-row">
+          <textarea id="exit-node-command" rows="3" readonly></textarea>
+          <button type="button" class="btn btn-sm" id="exit-node-copy-cmd">Copia</button>
+        </div>
+      </label>
+    </div>
+  </form>
+</dialog>
+
+<script type="application/json" id="worker-choices-data">{{ worker_choices_json | safe }}</script>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ static_url('ui.js') }}"></script>
+{% endblock %}

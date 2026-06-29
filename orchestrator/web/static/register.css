@@ -1,0 +1,172 @@
+:root {
+  --bg: #0a0e14;
+  --bg-stripe: #0d121c;
+  --text: #e7ecf3;
+  --muted: #6b7c93;
+  --ok: #22c55e;
+  --ok-bright: #86efac;
+  --text-soft: #cbd5e1;
+  --register-pad: clamp(1rem, 4vmin, 2rem);
+}
+
+* { box-sizing: border-box; }
+
+html {
+  height: 100%;
+  overflow: hidden;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  background: var(--bg);
+  isolation: isolate;
+}
+
+html::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: radial-gradient(circle at 50% 42%, rgba(18, 24, 38, 0.45), transparent 68%);
+}
+
+html::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 85% 55% at 12% -8%, rgba(99, 102, 241, 0.16), transparent 58%),
+    radial-gradient(ellipse 65% 50% at 92% 108%, rgba(34, 211, 238, 0.1), transparent 54%);
+}
+
+body {
+  position: relative;
+  z-index: 2;
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+  background: transparent;
+  color: var(--text);
+  font-family: system-ui, -apple-system, sans-serif;
+  line-height: 1.45;
+}
+
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    45deg,
+    var(--bg-stripe) 0,
+    var(--bg-stripe) 1px,
+    transparent 1px,
+    transparent 9px
+  );
+  -webkit-mask-image: radial-gradient(
+    circle at 50% 50%,
+    rgba(0, 0, 0, 0.72) 0%,
+    rgba(0, 0, 0, 0.72) 40%,
+    rgba(0, 0, 0, 0.88) 58%,
+    black 92%
+  );
+  mask-image: radial-gradient(
+    circle at 50% 50%,
+    rgba(0, 0, 0, 0.72) 0%,
+    rgba(0, 0, 0, 0.72) 40%,
+    rgba(0, 0, 0, 0.88) 58%,
+    black 92%
+  );
+}
+
+.register-screen {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  height: 100dvh;
+  max-height: 100dvh;
+  overflow: hidden;
+  padding:
+    max(var(--register-pad), env(safe-area-inset-top, 0px))
+    max(var(--register-pad), env(safe-area-inset-right, 0px))
+    max(var(--register-pad), env(safe-area-inset-bottom, 0px))
+    max(var(--register-pad), env(safe-area-inset-left, 0px));
+  text-align: center;
+}
+
+.register-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(0.75rem, 2.5vh, 1.5rem);
+  width: min(100%, 22rem);
+  max-height: 100%;
+  margin: 0;
+}
+
+.register-label {
+  margin: 0;
+  font-size: clamp(0.75rem, 2.8vmin, 0.95rem);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.register-code {
+  margin: 0;
+  font-size: clamp(2rem, 12vmin, 4.5rem);
+  font-weight: 700;
+  letter-spacing: clamp(0.1em, 1.2vmin, 0.2em);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.register-hint {
+  margin: 0;
+  max-width: 18rem;
+  font-size: clamp(0.8125rem, 2.6vmin, 0.9375rem);
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.register-screen.is-copyable {
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.register-hint.is-copied {
+  color: var(--ok-bright);
+}
+
+.register-message {
+  margin: 0;
+  font-size: clamp(0.9375rem, 3vmin, 1.125rem);
+  color: var(--muted);
+}
+
+.register-label.is-approved {
+  font-weight: 700;
+  color: var(--ok-bright);
+  letter-spacing: 0.08em;
+  font-size: clamp(1rem, 3.2vmin, 1.15rem);
+}
+
+.register-message.is-subtle {
+  color: var(--text-soft);
+}
+
+@media (max-height: 480px) {
+  .register-stack {
+    gap: 0.5rem;
+  }
+
+  .register-code {
+    font-size: clamp(1.75rem, 10vmin, 3rem);
+  }
+}

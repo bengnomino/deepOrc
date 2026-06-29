@@ -1,0 +1,37 @@
+"""Headscale integration."""
+
+from orchestrator.headscale.client import (
+    HeadscaleError,
+    PreAuthKey,
+    RegisteredNode,
+    approve_exit_routes_for_tagged_nodes,
+    approve_registration_request,
+    assign_exit_node_name,
+    create_exit_node_preauth_key,
+    create_gateway_preauth_key,
+    create_worker_preauth_key,
+    ensure_headscale_user,
+    exit_node_registration_command,
+    get_node_tailscale_ip_by_hostname,
+    get_user_id,
+    list_exit_nodes,
+    sync_exit_node_names,
+)
+
+__all__ = [
+    "HeadscaleError",
+    "PreAuthKey",
+    "RegisteredNode",
+    "approve_exit_routes_for_tagged_nodes",
+    "approve_registration_request",
+    "assign_exit_node_name",
+    "create_exit_node_preauth_key",
+    "create_gateway_preauth_key",
+    "create_worker_preauth_key",
+    "ensure_headscale_user",
+    "exit_node_registration_command",
+    "get_node_tailscale_ip_by_hostname",
+    "get_user_id",
+    "list_exit_nodes",
+    "sync_exit_node_names",
+]

@@ -1,0 +1,205 @@
+{% extends "base.html" %}
+{% block content %}
+<header class="page-hero">
+  <div class="hero-breadcrumb">
+    <a href="/orchestrator/ui" class="muted">Dashboard</a>
+    <span class="muted">/</span>
+    <h1>{{ gateway.name }}</h1>
+    <span class="status-pill status-{{ gateway.status.value }}">{{ gateway.status.value }}</span>
+  </div>
+</header>
+
+{% if flash_error %}
+<div class="alert error">{{ flash_error }}</div>
+{% endif %}
+
+{% if flash_ok %}
+<div class="alert success">{{ flash_ok }}</div>
+{% endif %}
+
+{% if gateway.error_message %}
+<div class="alert error">{{ gateway.error_message }}</div>
+{% endif %}
+
+{% if headscale_error %}
+<div class="alert error">Headscale: {{ headscale_error }}</div>
+{% endif %}
+
+{% if gateway.status.value == 'error' %}
+<div class="card card-glass">
+  <p>Provisioning fallito.</p>
+  <form method="post" action="/orchestrator/ui/gateways/{{ gateway.id }}/retry">
+    <button type="submit" class="btn btn-glow">Riprova provisioning</button>
+  </form>
+</div>
+{% elif gateway.status.value == 'provisioning' %}
+<div class="card card-glass notice">
+  <p>
+    Provisioning in corso — il gateway verrà registrato come exit node Tailscale.
+    {% if provision_progress %}
+    <br><span class="muted">Fase: <strong>{{ provision_progress.label }}</strong>{% if provision_progress.ago %} — aggiornato {{ provision_progress.ago }}{% endif %}</span>
+    {% else %}
+    <br><span class="muted">Config e avvio servizi sulla VM richiedono in genere 30–60 secondi.</span>
+    {% endif %}
+  </p>
+</div>
+{% elif gateway.status.value == 'pending' %}
+<div class="card card-glass notice">
+  <p>
+    Provisioning avviato automaticamente…
+    {% if provision_progress %}
+    <br><span class="muted">Fase: <strong>{{ provision_progress.label }}</strong>{% if provision_progress.ago %} — aggiornato {{ provision_progress.ago }}{% endif %}</span>
+    {% endif %}
+  </p>
+</div>
+{% endif %}
+
+<div class="detail-grid">
+  <section class="card card-glass">
+    <h2>Infrastruttura</h2>
+    <dl class="meta-list vertical">
+      <div><dt>Endpoint WireGuard</dt><dd><code>{{ endpoint }}</code></dd></div>
+      <div><dt>Gateway WG</dt><dd><code>{{ wg_gateway_ip }}</code></dd></div>
+      <div><dt>VM IP</dt><dd><code>{{ gateway.vm_ip }}</code></dd></div>
+      <div><dt>Subnet WG</dt><dd><code>{{ gateway.wg_subnet }}</code></dd></div>
+      <div><dt>UDP port</dt><dd>{{ gateway.udp_port }}</dd></div>
+      {% if metrics %}
+      <div><dt>Tailscale</dt><dd><span class="status-pill {% if metrics.tailscale_online %}online{% else %}offline{% endif %}">{% if metrics.tailscale_online %}online{% else %}offline{% endif %}</span></dd></div>
+      <div><dt>WireGuard</dt><dd><span class="status-pill {% if metrics.wg_online %}online{% else %}offline{% endif %}">{% if metrics.wg_online %}up{% else %}down{% endif %}</span></dd></div>
+      {% endif %}
+    </dl>
+
+    <h3 class="section-sub">Exit node Tailscale</h3>
+    <dl class="meta-list vertical">
+      <div><dt>Ruolo</dt><dd>Questo gateway <strong>è</strong> l'exit node (<code>{{ gateway.name }}</code>)</dd></div>
+      {% if gateway.exit_node_id != 'pending' %}
+      <div><dt>IP Tailscale</dt><dd><code>{{ gateway.exit_node_id }}</code></dd></div>
+      {% if exit_node %}
+      <div><dt>Stato</dt><dd><span class="status-pill {% if exit_node.online %}online{% else %}offline{% endif %}">{% if exit_node.online %}online{% else %}offline{% endif %}</span></div>
+      {% if not exit_node.exit_approved %}
+      <div><dt>Route exit</dt><dd><span class="status-pill warn">in approvazione</span></dd></div>
+      {% endif %}
+      {% endif %}
+      {% else %}
+      <div><dt>IP Tailscale</dt><dd><span class="muted">disponibile dopo provisioning</span></dd></div>
+      {% endif %}
+    </dl>
+
+    <div class="danger-zone">
+      <button type="button" class="btn btn-danger btn-sm" id="btn-delete-gateway">Elimina gateway</button>
+    </div>
+  </section>
+
+  <section class="card card-glass">
+    <div class="card-head row-head">
+      <h2>Peer backhaul WireGuard</h2>
+      <div class="peer-head-actions">
+        {% if gateway.status.value == 'ready' %}
+        {% if peers_online or peers_offline %}
+        <a href="/orchestrator/ui/gateways/{{ gateway.id }}/peers/config" class="btn btn-sm">Scarica .conf</a>
+        {% endif %}
+        {% endif %}
+      </div>
+    </div>
+
+    {% if gateway.status.value != 'ready' %}
+    <p class="muted">Un solo peer backhaul (<code>{{ gateway.name }}-link</code>) viene creato automaticamente al termine del provisioning.</p>
+    {% elif peers_online or peers_offline %}
+    {% if peers_online %}
+    <h3 class="peer-section-title">Connessi</h3>
+    <div class="peer-list">
+      {% for row in peers_online %}
+      {% set peer = row.peer %}
+      <article class="peer-row">
+        <div class="peer-row-main">
+          <span class="listen-dot" title="Online"></span>
+          <strong>{{ peer.name }}</strong>
+          <code>{{ peer.allowed_ip }}</code>
+        </div>
+        <div class="peer-row-actions">
+          <a href="/orchestrator/ui/peers/{{ peer.id }}/config" class="btn btn-sm">Scarica .conf</a>
+          <form method="post" action="/orchestrator/ui/peers/{{ peer.id }}/regenerate" class="inline">
+            <button type="submit" class="btn btn-sm btn-ghost">Rigenera</button>
+          </form>
+          <form method="post" action="/orchestrator/ui/peers/{{ peer.id }}/suspend" class="inline">
+            <button type="submit" class="btn btn-sm btn-ghost">Sospendi</button>
+          </form>
+          <form method="post" action="/orchestrator/ui/peers/{{ peer.id }}/delete" class="inline"
+                onsubmit="return confirm('Eliminare {{ peer.name }}?');">
+            <button type="submit" class="btn btn-sm btn-ghost danger-text">Elimina</button>
+          </form>
+        </div>
+      </article>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if peers_offline %}
+    <h3 class="peer-section-title">Offline</h3>
+    <div class="peer-list">
+      {% for row in peers_offline %}
+      {% set peer = row.peer %}
+      <article class="peer-row">
+        <div class="peer-row-main">
+          {% if peer.suspended %}
+          <span class="status-dot warn" title="Sospeso"></span>
+          {% else %}
+          <span class="status-dot offline" title="Offline"></span>
+          {% endif %}
+          <strong>{{ peer.name }}</strong>
+          <code>{{ peer.allowed_ip }}</code>
+          {% if peer.suspended %}<span class="status-pill warn">sospeso</span>{% endif %}
+        </div>
+        <div class="peer-row-actions">
+          <a href="/orchestrator/ui/peers/{{ peer.id }}/config" class="btn btn-sm">Scarica .conf</a>
+          <form method="post" action="/orchestrator/ui/peers/{{ peer.id }}/regenerate" class="inline">
+            <button type="submit" class="btn btn-sm btn-ghost">Rigenera</button>
+          </form>
+          {% if peer.suspended %}
+          <form method="post" action="/orchestrator/ui/peers/{{ peer.id }}/resume" class="inline">
+            <button type="submit" class="btn btn-sm">Riprendi</button>
+          </form>
+          {% else %}
+          <form method="post" action="/orchestrator/ui/peers/{{ peer.id }}/suspend" class="inline">
+            <button type="submit" class="btn btn-sm btn-ghost">Sospendi</button>
+          </form>
+          {% endif %}
+          <form method="post" action="/orchestrator/ui/peers/{{ peer.id }}/delete" class="inline"
+                onsubmit="return confirm('Eliminare {{ peer.name }}?');">
+            <button type="submit" class="btn btn-sm btn-ghost danger-text">Elimina</button>
+          </form>
+        </div>
+      </article>
+      {% endfor %}
+    </div>
+    {% endif %}
+    {% else %}
+    <p class="muted">Creazione peer in corso… ricarica tra qualche secondo.</p>
+    {% endif %}
+  </section>
+</div>
+
+<dialog id="gateway-delete-modal" class="modal">
+  <form method="post" action="/orchestrator/ui/gateways/{{ gateway.id }}/delete" class="modal-card" id="gateway-delete-form">
+    <div class="modal-header">
+      <h2>Elimina gateway</h2>
+      <button type="button" class="btn btn-icon modal-close" id="gateway-delete-modal-close" aria-label="Chiudi">✕</button>
+    </div>
+    <p class="muted">
+      Confermi l'eliminazione di <strong>{{ gateway.name }}</strong>?
+      La VM verrà rimossa dal worker e l'operazione non è reversibile.
+    </p>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-ghost" id="gateway-delete-cancel">Annulla</button>
+      <button type="submit" class="btn btn-danger">Elimina</button>
+    </div>
+  </form>
+</dialog>
+{% endblock %}
+
+{% block scripts %}
+{% if gateway.status.value in ['pending', 'provisioning'] %}
+<script>setTimeout(() => window.location.reload(), 10000);</script>
+{% endif %}
+<script src="{{ static_url('ui.js') }}"></script>
+{% endblock %}

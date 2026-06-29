@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <title>{{ title }} — VDI Orchestrator</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ static_url('style.css') }}">
+</head>
+<body>
+  <div class="bg-mesh" aria-hidden="true"></div>
+  <header class="topbar">
+    <a href="/orchestrator/ui" class="brand">
+      <span class="brand-mark"></span>
+      VDI Orchestrator
+    </a>
+    <nav>
+      <a href="/orchestrator/ui" class="nav-link">Dashboard</a>
+      <a href="/orchestrator/docs" target="_blank" class="nav-link">API</a>
+    </nav>
+  </header>
+  <main class="container">
+    {% block content %}{% endblock %}
+  </main>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

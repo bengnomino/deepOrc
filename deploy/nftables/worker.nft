@@ -1,0 +1,32 @@
+# Gateway worker VPS — Incus host, WireGuard UDP only (no public HTTP)
+# Rendered to /etc/nftables.d/10-deeporc.nft by deploy/firewall-worker-nft.sh
+
+table inet deeporc {
+  set wg_udp_ports {
+    type inet_service
+    flags interval
+    elements = { @PORT_POOL_START@-@PORT_POOL_END@ }
+  }
+
+  chain input {
+    type filter hook input priority filter; policy drop;
+
+    iifname "lo" accept comment "loopback"
+    ct state established,related accept comment "established"
+
+    iifname "tailscale0" accept comment "Tailscale tailnet (ACL on Headscale)"
+
+    udp dport 41641 accept comment "Tailscale WireGuard (DERP/direct)"
+    tcp dport 22 accept comment "SSH"
+    udp dport @wg_udp_ports accept comment "WireGuard gateway endpoints"
+  }
+
+  chain forward {
+    type filter hook forward priority filter; policy accept;
+    comment "Incus/NAT forwarding"
+  }
+
+  chain output {
+    type filter hook output priority filter; policy accept;
+  }
+}

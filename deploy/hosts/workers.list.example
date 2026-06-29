@@ -1,0 +1,7 @@
+# SSH targets for gateway workers — copy to workers.list (gitignored).
+# Used by deploy/push-worker-bundle.sh after the CP publishes a new bundle.
+#
+# cp deploy/hosts/workers.list.example deploy/hosts/workers.list
+#
+# deepOrc initial cluster: CP + Worker 3 only
+root@146.190.232.35

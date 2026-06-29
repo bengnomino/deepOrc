@@ -1,0 +1,23 @@
+{
+  "randomizeClientPort": false,
+  "tagOwners": {
+    "tag:exit": ["gateways@"],
+    "tag:worker-host": ["workers@"],
+    "tag:control-plane": ["control@"]
+  },
+  "autoApprovers": {
+    "exitNode": ["tag:exit"]
+  },
+  "acls": [
+    {
+      "action": "accept",
+      "src": ["tag:control-plane"],
+      "dst": ["tag:worker-host:8443"]
+    },
+    {
+      "action": "accept",
+      "src": ["*"],
+      "dst": ["*:*"]
+    }
+  ]
+}

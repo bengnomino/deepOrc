@@ -1,0 +1,39 @@
+# Control plane VPS — orchestrator + Headscale + Caddy
+# Rendered to /etc/nftables.d/10-deeporc.nft by deploy/firewall-nft.sh
+
+table inet deeporc {
+  set wg_udp_ports {
+    type inet_service
+    flags interval
+    elements = { @PORT_POOL_START@-@PORT_POOL_END@ }
+  }
+
+  set orch_bridge_v4 {
+    type ipv4_addr
+    flags interval
+    elements = { @ORCH_NET@ }
+  }
+
+  chain input {
+    type filter hook input priority filter; policy drop;
+
+    iifname "lo" accept comment "loopback"
+    ct state established,related accept comment "established"
+
+    tcp dport 22 accept comment "SSH"
+    tcp dport { 80, 443 } accept comment "HTTP/HTTPS (Caddy)"
+    udp dport @wg_udp_ports accept comment "WireGuard gateway endpoints"
+
+    # Gateway VMs on Incus bridge — not reachable via Cloudflare
+    ip saddr @orch_bridge_v4 tcp dport { 8080, 8000 } accept comment "Headscale + orchestrator from Incus"
+  }
+
+  chain forward {
+    type filter hook forward priority filter; policy accept;
+    comment "Incus/NAT forwarding"
+  }
+
+  chain output {
+    type filter hook output priority filter; policy accept;
+  }
+}

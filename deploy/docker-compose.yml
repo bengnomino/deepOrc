@@ -1,0 +1,39 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: orchestrator
+      POSTGRES_PASSWORD: orchestrator
+      POSTGRES_DB: orchestrator
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U orchestrator"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  orchestrator:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql+psycopg://orchestrator:orchestrator@postgres:5432/orchestrator
+      SECRET_KEY: ${SECRET_KEY:-change-me-in-production-32chars}
+      API_KEY: ${API_KEY:-dev-api-key}
+      HOST_PUBLIC_IP: ${HOST_PUBLIC_IP:-203.0.113.1}
+      ORCH_HOST_IP: ${ORCH_HOST_IP:-10.10.0.1}
+      HEADSCALE_URL: ${HEADSCALE_URL:-https://headscale.example.com}
+      INCUS_SOCKET: /var/run/incus/unix
+      INCUS_NETWORK: ${INCUS_NETWORK:-orch-br0}
+    volumes:
+      - /var/run/incus/unix:/var/run/incus/unix
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  pgdata:

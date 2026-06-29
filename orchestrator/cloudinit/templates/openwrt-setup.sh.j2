@@ -1,0 +1,163 @@
+#!/bin/sh
+# Runtime gateway configuration for OpenWrt containers (no cloud-init).
+set -eu
+
+mkdir -p /etc/wireguard /opt/gateway-agent /etc/nftables.d
+chmod 700 /etc/wireguard /opt/gateway-agent
+
+configure_wan() {
+  for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
+    ubus list >/dev/null 2>&1 && break
+    sleep 1
+  done
+  if ubus list >/dev/null 2>&1; then
+    uci set network.wan.proto='static'
+    uci set network.wan.ipaddr='{{ vm_ip }}'
+    uci set network.wan.netmask='255.255.0.0'
+    uci set network.wan.gateway='{{ orch_allowed_ip }}'
+    uci set network.wan.peerdns='0'
+    uci -q delete network.wan.dns 2>/dev/null || true
+    uci add_list network.wan.dns='1.1.1.1'
+    uci commit network
+    /etc/init.d/network reload
+    sleep 2
+  fi
+  killall udhcpc 2>/dev/null || true
+  ip link set {{ net_interface }} up 2>/dev/null || true
+  ip addr add {{ vm_ip }}/16 dev {{ net_interface }} 2>/dev/null || true
+  ip route replace default via {{ orch_allowed_ip }} dev {{ net_interface }} 2>/dev/null || true
+  rm -f /etc/resolv.conf
+  printf "nameserver 1.1.1.1\n" >/etc/resolv.conf
+}
+
+configure_wan
+for i in 1 2 3 4 5 6 7 8 9 10; do
+  ping -c1 -W2 1.1.1.1 >/dev/null 2>&1 && break
+  configure_wan
+  sleep 1
+done
+
+cat >/etc/wireguard/wg0.conf <<EOF
+[Interface]
+PrivateKey = {{ wg_private_key }}
+Address = {{ wg_gateway_ip }}/24
+ListenPort = {{ wg_listen_port }}
+EOF
+chmod 600 /etc/wireguard/wg0.conf
+
+cat >/opt/gateway-agent/config.env <<EOF
+AGENT_TOKEN={{ agent_token }}
+ORCH_ALLOWED_IP={{ orch_allowed_ip }}
+LISTEN_HOST=0.0.0.0
+LISTEN_PORT={{ agent_port }}
+NET_INTERFACE={{ net_interface }}
+EOF
+chmod 600 /opt/gateway-agent/config.env
+
+cat >/opt/gateway-agent/tailscale.env <<EOF
+HEADSCALE_URL={{ headscale_url }}
+TAILSCALE_AUTH_KEY={{ tailscale_auth_key }}
+GATEWAY_NAME={{ gateway_name }}
+EOF
+chmod 600 /opt/gateway-agent/tailscale.env
+
+cat >/opt/gateway-agent/wg-up.sh <<'EOF'
+#!/bin/sh
+# Bring up wg0 from /etc/wireguard/wg0.conf (OpenWrt wg expects key file paths).
+set -eu
+CONF=/etc/wireguard/wg0.conf
+[ -f "$CONF" ] || exit 1
+
+port=$(grep -m1 '^ListenPort' "$CONF" | cut -d= -f2 | tr -d ' ')
+addr=$(grep -m1 '^Address' "$CONF" | cut -d= -f2 | tr -d ' ')
+keyfile=$(mktemp)
+umask 077
+sed -n 's/^PrivateKey = //p' "$CONF" | head -1 | tr -d '\r\n' >"$keyfile"
+
+ip link del dev wg0 2>/dev/null || true
+ip link add dev wg0 type wireguard
+wg set wg0 private-key "$keyfile" listen-port "$port"
+rm -f "$keyfile"
+ip -4 addr add "$addr" dev wg0
+ip link set wg0 up
+ip link set wg0 mtu 1280
+EOF
+chmod 755 /opt/gateway-agent/wg-up.sh
+
+cat >/etc/nftables.d/gateway.nft <<EOF
+#!/usr/sbin/nft -f
+table inet gw_filter {
+  chain input {
+    type filter hook input priority filter; policy drop;
+    iif "lo" accept
+    ct state established,related accept
+    iifname "wg0" accept
+    iifname "tailscale0" accept
+    udp dport {{ wg_listen_port }} accept
+    tcp dport {{ agent_port }} ip saddr { {{ orch_allowed_ip }}, {{ vm_ip }} } accept
+  }
+  chain forward {
+    type filter hook forward priority filter; policy drop;
+    iifname "wg0" oifname "{{ net_interface }}" accept
+    iifname "{{ net_interface }}" oifname "wg0" ct state established,related accept
+  }
+}
+
+table ip gw_nat {
+  chain postrouting {
+    type nat hook postrouting priority srcnat; policy accept;
+    ip saddr {{ wg_subnet }} oifname "{{ net_interface }}" masquerade
+  }
+}
+EOF
+
+/etc/init.d/tailscale enable
+/etc/init.d/tailscale start
+for i in 1 2 3 4 5 6 7 8 9 10; do
+  /usr/sbin/tailscale status >/dev/null 2>&1 && break
+  sleep 1
+done
+
+/etc/init.d/tailscale-up enable
+. /opt/gateway-agent/tailscale.env
+configure_wan
+for i in 1 2 3 4 5; do
+  if /usr/sbin/tailscale up \
+    --login-server="$HEADSCALE_URL" \
+    --authkey="$TAILSCALE_AUTH_KEY" \
+    --hostname="$GATEWAY_NAME" \
+    --advertise-exit-node \
+    --accept-routes \
+    --netfilter-mode=off \
+    --timeout=45s; then
+    break
+  fi
+  configure_wan
+  /etc/init.d/tailscale restart
+  sleep 2
+done
+/usr/sbin/tailscale status --json | grep -q '"BackendState": "Running"' \
+  || { echo "tailscale login failed (check host UFW allows ${HEADSCALE_URL})" >&2; exit 1; }
+
+ip rule del pref 35 to {{ wg_subnet }} lookup main 2>/dev/null || true
+ip rule add pref 35 to {{ wg_subnet }} lookup main
+ip rule del pref 40 from {{ wg_gateway_ip }}/32 lookup main 2>/dev/null || true
+ip rule add pref 40 from {{ wg_gateway_ip }}/32 lookup main
+ip rule del pref 50 from {{ vm_ip }}/32 lookup main 2>/dev/null || true
+ip rule add pref 50 from {{ vm_ip }}/32 lookup main
+
+/etc/init.d/gateway-wg enable
+/etc/init.d/gateway-wg start
+nft delete table inet gw_filter 2>/dev/null || true
+nft delete table ip gw_nat 2>/dev/null || true
+nft -f /etc/nftables.d/gateway.nft
+nft insert rule inet fw4 input udp dport {{ wg_listen_port }} accept 2>/dev/null || true
+nft insert rule inet fw4 input iifname "wg0" accept 2>/dev/null || true
+nft insert rule inet fw4 input tcp dport {{ agent_port }} ip saddr {{ orch_allowed_ip }} accept 2>/dev/null || true
+nft insert rule inet fw4 forward iifname "wg0" accept 2>/dev/null || true
+nft insert rule inet fw4 forward oifname "wg0" accept 2>/dev/null || true
+
+/etc/init.d/gateway-agent enable
+/etc/init.d/gateway-agent start || true
+sleep 1
+/etc/init.d/gateway-agent status || /etc/init.d/gateway-agent start || true
