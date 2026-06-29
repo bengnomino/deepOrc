@@ -18,15 +18,15 @@ STAGE_REGISTER = "register"
 STAGE_PEER_SETUP = "peer_setup"
 STAGE_DONE = "done"
 
-STAGE_LABELS_IT: dict[str, str] = {
-    STAGE_QUEUED: "In coda",
-    STAGE_PREPARING: "Preparazione",
-    STAGE_VM_LAUNCH: "Avvio VM",
-    STAGE_CLOUD_INIT: "Cloud-init (config e servizi, ~30–60 s)",
-    STAGE_AGENT_WAIT: "Attesa WireGuard e Tailscale online",
-    STAGE_REGISTER: "Registrazione agent",
-    STAGE_PEER_SETUP: "Creazione peer predefinito",
-    STAGE_DONE: "Completato",
+STAGE_LABELS: dict[str, str] = {
+    STAGE_QUEUED: "Queued",
+    STAGE_PREPARING: "Preparing",
+    STAGE_VM_LAUNCH: "Launching VM",
+    STAGE_CLOUD_INIT: "Configuring VM",
+    STAGE_AGENT_WAIT: "Waiting for WireGuard and Tailscale",
+    STAGE_REGISTER: "Registering agent",
+    STAGE_PEER_SETUP: "Creating backhaul peer",
+    STAGE_DONE: "Complete",
 }
 
 
@@ -46,23 +46,23 @@ def format_time_ago(when: datetime | None) -> str | None:
     if seconds < 0:
         seconds = 0
     if seconds < 10:
-        return "adesso"
+        return "just now"
     if seconds < 60:
-        return f"{seconds} s fa"
+        return f"{seconds}s ago"
     minutes = seconds // 60
     if minutes < 60:
-        return f"{minutes} min fa"
+        return f"{minutes}m ago"
     hours = minutes // 60
     if hours < 24:
-        return f"{hours} h fa"
+        return f"{hours}h ago"
     days = hours // 24
-    return f"{days} g fa"
+    return f"{days}d ago"
 
 
 def format_provision_progress(job: Job | None) -> dict[str, str] | None:
     if not job or not job.stage:
         return None
-    label = STAGE_LABELS_IT.get(job.stage, job.stage)
+    label = STAGE_LABELS.get(job.stage, job.stage)
     ago = format_time_ago(job.stage_updated_at)
     if ago:
         return {"label": label, "ago": ago}

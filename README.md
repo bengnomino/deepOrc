@@ -1,61 +1,61 @@
 # deepOrc
 
-Orchestratore per gateway clusterizzati con architettura **invertita** rispetto al modello VDI classico:
+Orchestrator for clustered gateways with an **inverted** architecture compared to classic VDI:
 
-- Ogni **gateway è un exit node Tailscale** (Headscale)
-- Un **solo peer WireGuard** per gateway (backhaul verso il cluster)
-- I client Tailscale usano il gateway come uscita Internet
+- Each **gateway is a Tailscale exit node** (Headscale)
+- **One** WireGuard peer per gateway (backhaul to the cluster)
+- Tailscale clients use the gateway as their Internet exit
 
-## Architettura
+## Architecture
 
 ```
-Client Tailscale ──► Gateway VM (exit node) ──► Internet
+Tailscale client ──► Gateway VM (exit node) ──► Internet
                          ▲
-                    1× peer WG (backhaul)
+                    1× WG peer (backhaul)
 ```
 
-Flusso backhaul:
+Backhaul flow:
 
 ```
-Nodo cluster ──WireGuard──► Gateway VM (Incus su worker) ──► Internet
+Cluster node ──WireGuard──► Gateway VM (Incus on worker) ──► Internet
 ```
 
-L'orchestratore gestisce:
+The orchestrator manages:
 
-- Provisioning gateway OpenWrt su Incus (worker VPS)
-- Tailscale con `--advertise-exit-node` e tag `tag:exit`
-- Un peer WireGuard backhaul per gateway
-- nftables fail-closed (egress via WAN, non via exit node esterno)
-- Cluster multi-worker (control plane + worker Incus)
+- OpenWrt gateway provisioning on Incus (worker VPS)
+- Tailscale with `--advertise-exit-node` and tag `tag:exit`
+- One WireGuard backhaul peer per gateway
+- nftables fail-closed (egress via WAN, not via external exit node)
+- Multi-worker cluster (control plane + Incus workers)
 
-## Setup iniziale (2 host)
+## Initial setup (2 hosts)
 
-| Host | IP | Ruolo |
-|------|-----|--------|
+| Host | IP | Role |
+|------|-----|------|
 | Control plane | `165.227.156.103` | Orchestrator + Headscale + UI |
-| Worker 3 | `146.190.232.35` | Incus + gateway VM |
+| Worker 3 | `146.190.232.35` | Incus + gateway VMs |
 
-## Prerequisiti VPS
+## VPS prerequisites
 
 ### Control plane (Debian)
-- Incus opzionale (gateway su worker remoti)
+- Incus optional (gateways run on remote workers)
 - Headscale + Caddy
-- Pool porte UDP `51001-52000` sul worker per WireGuard
+- UDP port pool `51001-52000` on workers for WireGuard
 
 ### Worker
-- Incus con golden image `gw-golden`
+- Incus with golden image `gw-golden`
 - Join Tailscale (`tag:worker-host`)
-- `./deploy/join-worker.sh` dal control plane
+- `./deploy/join-worker.sh` from the control plane
 
 ### Headscale policy
 ```bash
 ./deploy/setup-headscale-policy.sh
 ```
-Tag `tag:exit` owned by `gateways@` con auto-approvazione route exit.
+Tag `tag:exit` owned by `gateways@` with auto-approved exit routes.
 
-## Installazione
+## Installation
 
-### Sviluppo locale
+### Local development
 
 ```bash
 python3.13 -m venv .venv
@@ -66,7 +66,7 @@ alembic upgrade head
 orchestrator
 ```
 
-### Produzione (control plane)
+### Production (control plane)
 
 ```bash
 cp deploy/hosts/host.env.example deploy/hosts/host.env
@@ -77,16 +77,16 @@ sudo ./deploy/bootstrap-vps.sh deploy/hosts/host.env
 ### Worker
 
 ```bash
-# Sul worker 146.190.232.35
+# On worker 146.190.232.35
 curl -fsSL https://<DOMAIN>/orchestrator/ui/workers/join.sh | sudo bash -s -- \
   --enroll-token <TOKEN> --cp-url https://<DOMAIN>
 ```
 
-Aggiornamenti CP: `sudo ./deploy/update.sh main deploy/hosts/host.env`
+Control plane updates: `sudo ./deploy/update.sh main deploy/hosts/host.env`
 
-Dettagli: [deploy/README.md](deploy/README.md).
+Details: [deploy/README.md](deploy/README.md).
 
-## API gateway
+## Gateway API
 
 ```bash
 curl -X POST https://<DOMAIN>/orchestrator/api/gateways \
@@ -95,12 +95,12 @@ curl -X POST https://<DOMAIN>/orchestrator/api/gateways \
   -d '{"worker_id": 1}'
 ```
 
-Dopo il provisioning il gateway compare su Headscale come exit node (`gw-NNN`). Il peer backhaul `{name}-link` viene creato automaticamente.
+After provisioning the gateway appears on Headscale as an exit node (`gw-NNN`). The backhaul peer `{name}-link` is created automatically.
 
-## Differenze vs orchtest
+## Differences vs orchtest
 
 | orchtest | deepOrc |
 |----------|---------|
-| Gateway → exit node Android esterno | Gateway **è** l'exit node |
-| Molti peer WG (VDI) | **Un** peer WG backhaul |
-| Assegnazione exit node in UI | Exit node implicito (hostname gateway) |
+| Gateway → external Android exit node | Gateway **is** the exit node |
+| Many WG peers (VDI) | **One** WG backhaul peer |
+| Exit node assignment in UI | Exit node implicit (gateway hostname) |

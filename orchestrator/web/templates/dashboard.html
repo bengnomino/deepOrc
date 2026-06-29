@@ -8,10 +8,10 @@
   <div class="header-actions">
     <button type="button" class="btn btn-glow" id="btn-new-gateway">
       <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/></svg>
-      Nuovo gateway
+      New gateway
     </button>
-    <button type="button" class="btn btn-ghost" id="btn-add-worker">Aggiungi worker</button>
-    <button type="button" class="btn btn-ghost" id="btn-add-exit-node">Peer mobile</button>
+    <button type="button" class="btn btn-ghost" id="btn-add-worker">Add worker</button>
+    <button type="button" class="btn btn-ghost" id="btn-add-exit-node">Mobile client</button>
   </div>
 </header>
 
@@ -23,14 +23,9 @@
 <div class="alert error">{{ headscale_error }}</div>
 {% endif %}
 
-<section class="card card-glass notice">
-  <p class="muted">deepOrc: ogni gateway <strong>è</strong> un exit node Tailscale. Il peer WireGuard backhaul viene creato automaticamente.</p>
-  <p class="muted">Per testare l'exit da telefono: <strong>Peer mobile</strong> (auth key) oppure app Tailscale → server <code>{{ login_server }}</code> → «Usa come exit node» → approva il codice in dashboard.</p>
-</section>
-
 <section class="card card-glass" id="pending-registrations-section"{% if not pending_registrations %} hidden{% endif %}>
   <div class="card-head row-head">
-    <h2>Registrazioni mobile in attesa <span class="listen-dot" title="Live"></span></h2>
+    <h2>Pending registrations <span class="listen-dot" title="Live"></span></h2>
   </div>
   <div id="pending-registrations-list" class="chip-grid">
     {% for reg in pending_registrations %}
@@ -39,10 +34,10 @@
       <span class="muted chip-meta">{{ reg.created_at }}</span>
       <div class="chip-actions">
         <form method="post" action="/orchestrator/ui/registrations/{{ reg.registration_key }}/approve">
-          <button type="submit" class="btn btn-sm btn-glow">Approva</button>
+          <button type="submit" class="btn btn-sm btn-glow">Approve</button>
         </form>
         <form method="post" action="/orchestrator/ui/registrations/{{ reg.registration_key }}/reject">
-          <button type="submit" class="btn btn-sm btn-ghost">Rifiuta</button>
+          <button type="submit" class="btn btn-sm btn-ghost">Reject</button>
         </form>
       </div>
     </div>
@@ -53,7 +48,7 @@
 {% if unassigned_exit_nodes %}
 <section class="card card-glass">
   <div class="card-head">
-    <h2>Peer Tailscale (mobile / liberi)</h2>
+    <h2>Tailscale peers</h2>
   </div>
   <div class="chip-grid">
     {% for node in unassigned_exit_nodes %}
@@ -68,7 +63,6 @@
         <span class="status-pill">exit provider</span>
         {% endif %}
       </div>
-      <p class="muted small-hint">Client: nell'app Tailscale → Exit node → <strong>negrexit</strong> (<code>100.64.0.12</code>)</p>
     </div>
     {% endfor %}
   </div>
@@ -88,10 +82,10 @@
     </h2>
     {% if section.status.value == 'online' %}
     <a href="/orchestrator/ui/workers/{{ section.worker.id }}/create-gateway" class="btn btn-sm btn-glow">
-      Crea gateway
+      Create gateway
     </a>
     {% else %}
-    <span class="btn btn-sm btn-glow is-disabled" title="Worker offline">Crea gateway</span>
+    <span class="btn btn-sm btn-glow is-disabled" title="Worker offline">Create gateway</span>
     {% endif %}
   </div>
 
@@ -129,15 +123,15 @@
           {% else %}
           <a href="/orchestrator/ui/gateways/{{ row.gateway.id }}" class="gateway-name">{{ row.display_name }}</a>
           {% endif %}
-          <span class="gateway-object-id muted" title="ID oggetto">{{ row.gateway.name }}</span>
+          <span class="gateway-object-id muted" title="Object ID">{{ row.gateway.name }}</span>
           <span class="status-pill status-{{ row.gateway.status.value }}">
-            {% if row.gateway.status.value == 'deleting' %}eliminazione{% else %}{{ row.gateway.status.value }}{% endif %}
+            {% if row.gateway.status.value == 'deleting' %}deleting{% else %}{{ row.gateway.status.value }}{% endif %}
           </span>
         </div>
         <div class="signal-row">
           <span class="signal {% if row.tailscale_online %}on{% endif %}" title="Tailscale">TS</span>
           <span class="signal {% if row.wg_online %}on{% endif %}" title="WireGuard">WG</span>
-          <span class="signal {% if row.peer_online %}on{% endif %}" title="Peer backhaul">{{ row.peer_online }}/{{ row.peer_total }}</span>
+          <span class="signal {% if row.peer_online %}on{% endif %}" title="Backhaul peer">{{ row.peer_online }}/{{ row.peer_total }}</span>
         </div>
         {% if row.gateway.exit_node_id != 'pending' %}
         <div class="gateway-exit-callout">
@@ -152,16 +146,14 @@
           </div>
           <code class="gateway-exit-callout-ip">{{ row.gateway.exit_node_id }}</code>
         </div>
-        {% else %}
-        <div class="muted small-hint">Exit node in attesa di provisioning…</div>
         {% endif %}
       </div>
       {% if row.gateway.status.value != 'deleting' %}
-      <a href="/orchestrator/ui/gateways/{{ row.gateway.id }}" class="gateway-tile-open btn btn-glow">Apri →</a>
+      <a href="/orchestrator/ui/gateways/{{ row.gateway.id }}" class="gateway-tile-open btn btn-glow">Open</a>
       {% endif %}
       {% if row.gateway.status.value == 'deleting' %}
       <div class="gateway-tile-overlay" aria-live="polite">
-        <span class="gateway-tile-overlay-label">Eliminazione in corso</span>
+        <span class="gateway-tile-overlay-label">Deleting</span>
       </div>
       {% endif %}
     </article>
@@ -169,7 +161,7 @@
   </div>
   {% else %}
   <div class="empty-state worker-empty">
-    <p class="muted">Nessun gateway su questo worker.</p>
+    <p class="muted">No gateways on this worker.</p>
   </div>
   {% endif %}
 </section>
@@ -178,7 +170,7 @@
 {% if not workers %}
 <section class="card card-glass">
   <div class="empty-state">
-    <p>Nessun worker registrato. Usa «Aggiungi worker» per generare il comando di join.</p>
+    <p>No workers registered.</p>
   </div>
 </section>
 {% endif %}
@@ -186,15 +178,15 @@
 <dialog id="gateway-modal" class="modal">
   <form method="post" action="/orchestrator/ui/gateways/create" class="modal-card" id="gateway-create-form">
     <div class="modal-header">
-      <h2>Nuovo gateway</h2>
-      <button type="button" class="btn btn-icon modal-close" id="gateway-modal-close" aria-label="Chiudi">✕</button>
+      <h2>New gateway</h2>
+      <button type="button" class="btn btn-icon modal-close" id="gateway-modal-close" aria-label="Close">✕</button>
     </div>
     <div id="gateway-modal-body">
       <div id="gateway-modal-error" class="alert error" hidden></div>
       <div id="gateway-worker-picker" class="worker-picker"></div>
       <input type="hidden" name="worker_id" id="gateway-worker-id" value="">
       <div class="modal-actions">
-        <button type="submit" class="btn btn-glow" id="gateway-create-submit">Crea gateway</button>
+        <button type="submit" class="btn btn-glow" id="gateway-create-submit">Create gateway</button>
       </div>
     </div>
   </form>
@@ -203,25 +195,25 @@
 <dialog id="worker-modal" class="modal">
   <form method="dialog" class="modal-card" id="worker-enroll-form">
     <div class="modal-header">
-      <h2>Aggiungi worker</h2>
-      <button type="button" class="btn btn-icon modal-close" id="worker-modal-close" aria-label="Chiudi">✕</button>
+      <h2>Add worker</h2>
+      <button type="button" class="btn btn-icon modal-close" id="worker-modal-close" aria-label="Close">✕</button>
     </div>
-    <div id="worker-modal-loading" class="muted">Generazione auth key e comando…</div>
+    <div id="worker-modal-loading" class="muted">Loading…</div>
     <div id="worker-modal-error" class="alert error" hidden></div>
     <div id="worker-modal-body" hidden>
-      <p class="muted">Worker <strong id="worker-enroll-label"></strong> — incolla il comando come root sulla nuova VPS.</p>
+      <p class="muted">Worker <strong id="worker-enroll-label"></strong></p>
       <label class="field-label">
-        Auth key Tailscale
+        Tailscale auth key
         <div class="copy-row">
           <input id="worker-enroll-key" readonly>
-          <button type="button" class="btn btn-sm" id="worker-enroll-copy-key">Copia</button>
+          <button type="button" class="btn btn-sm" id="worker-enroll-copy-key">Copy</button>
         </div>
       </label>
       <label class="field-label">
-        Comando
+        Command
         <div class="copy-row">
           <textarea id="worker-enroll-command" rows="8" readonly></textarea>
-          <button type="button" class="btn btn-sm" id="worker-enroll-copy-cmd">Copia</button>
+          <button type="button" class="btn btn-sm" id="worker-enroll-copy-cmd">Copy</button>
         </div>
       </label>
     </div>
@@ -231,25 +223,25 @@
 <dialog id="exit-node-modal" class="modal">
   <form method="dialog" class="modal-card">
     <div class="modal-header">
-      <h2>Peer mobile (auth key)</h2>
-      <button type="button" class="btn btn-icon modal-close" id="exit-node-modal-close" aria-label="Chiudi">✕</button>
+      <h2>Mobile client</h2>
+      <button type="button" class="btn btn-icon modal-close" id="exit-node-modal-close" aria-label="Close">✕</button>
     </div>
-    <div id="exit-node-modal-loading" class="muted">Generazione auth key…</div>
+    <div id="exit-node-modal-loading" class="muted">Loading…</div>
     <div id="exit-node-modal-error" class="alert error" hidden></div>
     <div id="exit-node-modal-body" hidden>
-      <p class="muted">Tag <code id="exit-node-tag"></code> — Android/iOS: server <code>{{ login_server }}</code>, incolla auth key o abilita exit node e approva il codice in dashboard.</p>
+      <p class="muted">Tag <code id="exit-node-tag"></code></p>
       <label class="field-label">
         Auth key
         <div class="copy-row">
           <input id="exit-node-key" readonly>
-          <button type="button" class="btn btn-sm" id="exit-node-copy-key">Copia</button>
+          <button type="button" class="btn btn-sm" id="exit-node-copy-key">Copy</button>
         </div>
       </label>
       <label class="field-label">
-        Comando
+        Command
         <div class="copy-row">
           <textarea id="exit-node-command" rows="3" readonly></textarea>
-          <button type="button" class="btn btn-sm" id="exit-node-copy-cmd">Copia</button>
+          <button type="button" class="btn btn-sm" id="exit-node-copy-cmd">Copy</button>
         </div>
       </label>
     </div>

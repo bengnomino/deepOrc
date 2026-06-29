@@ -435,16 +435,7 @@ def exit_node_registration_command(auth_key: str) -> str:
     settings = get_settings()
     return (
         f"tailscale up --login-server={settings.headscale_url} "
-        f"--authkey={auth_key}\n"
-        f"# Poi sul telefono: Exit node → negrexit (100.64.0.12)"
-    )
-
-
-def exit_node_web_registration_hint() -> str:
-    settings = get_settings()
-    return (
-        f"Nell'app Tailscale: server personalizzato → {settings.headscale_url}\n"
-        f"NON abilitare «Offri exit node». Dopo l'approvazione: Exit node → negrexit (gateway)."
+        f"--authkey={auth_key}"
     )
 
 

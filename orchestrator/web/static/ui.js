@@ -72,7 +72,7 @@
       const online = workerChoices.filter((row) => row.online);
 
       if (!workerChoices.length) {
-        gatewayError.textContent = "Nessun worker registrato. Aggiungi un worker prima di creare un gateway.";
+        gatewayError.textContent = "No workers registered.";
         gatewayError.hidden = false;
         gatewaySubmit.disabled = true;
         gatewayModal.showModal();
@@ -80,7 +80,7 @@
       }
 
       if (!online.length) {
-        gatewayError.textContent = "Tutti i worker sono offline. Attendi l'heartbeat o verifica la VPS worker.";
+        gatewayError.textContent = "All workers are offline.";
         gatewayError.hidden = false;
         gatewaySubmit.disabled = true;
         gatewayModal.showModal();
@@ -112,7 +112,7 @@
       if (!gatewayWorkerId.value) {
         event.preventDefault();
         gatewayError.hidden = false;
-        gatewayError.textContent = "Seleziona un worker online.";
+        gatewayError.textContent = "Select an online worker.";
       }
     });
   }
@@ -134,7 +134,7 @@
     function renderTrigger(option) {
       const main = trigger.querySelector(".picker-trigger-main");
       if (!main) return;
-      const label = option.dataset.label || "Non assegnato";
+      const label = option.dataset.label || "Unassigned";
       const meta = option.dataset.meta || "";
       const dot = option.dataset.dot || "none";
       const isPending = option.dataset.value === "pending";
@@ -194,7 +194,7 @@
     gatewayDeleteModal.querySelector("#gateway-delete-form")?.addEventListener("submit", () => {
       if (gatewayDeleteSubmit) {
         gatewayDeleteSubmit.disabled = true;
-        gatewayDeleteSubmit.textContent = "Eliminazione…";
+        gatewayDeleteSubmit.textContent = "Deleting…";
       }
     });
   }
@@ -227,7 +227,7 @@
         });
         const data = await response.json();
         if (!response.ok) {
-          throw new Error(data.detail || "Errore generazione enrollment");
+          throw new Error(data.detail || "Enrollment failed");
         }
         workerLabel.textContent = `${data.display_name} (${data.name})`;
         workerKey.value = data.tailscale_auth_key;
@@ -279,7 +279,7 @@
         });
         const data = await response.json();
         if (!response.ok) {
-          throw new Error(data.detail || "Errore generazione auth key");
+          throw new Error(data.detail || "Auth key generation failed");
         }
         keyInput.value = data.key;
         cmdInput.value = data.command;
@@ -323,10 +323,10 @@
           <span class="muted chip-meta">${item.created_at}</span>
           <div class="chip-actions">
             <form method="post" action="/orchestrator/ui/registrations/${item.registration_key}/approve">
-              <button type="submit" class="btn btn-sm btn-glow">Approva</button>
+              <button type="submit" class="btn btn-sm btn-glow">Approve</button>
             </form>
             <form method="post" action="/orchestrator/ui/registrations/${item.registration_key}/reject">
-              <button type="submit" class="btn btn-sm btn-ghost">Rifiuta</button>
+              <button type="submit" class="btn btn-sm btn-ghost">Reject</button>
             </form>
           </div>
         </div>`

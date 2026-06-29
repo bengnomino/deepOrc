@@ -135,7 +135,7 @@ def _dashboard_workers(session: DbSession) -> tuple[list[dict], list, str | None
         exit_nodes_by_ip = {}
         exit_nodes_by_hostname = {}
         unassigned = []
-        headscale_error = f"Impossibile leggere exit node da Headscale: {exc}"
+        headscale_error = f"Could not read exit nodes from Headscale: {exc}"
 
     sections = []
     for row in worker_service.dashboard_workers():
@@ -218,7 +218,6 @@ def create_exit_node_authkey() -> JSONResponse:
             "tag": "",
             "login_server": settings.headscale_url,
             "command": exit_node_registration_command(preauth.key),
-            "hint": "Client mesh only — seleziona exit node negrexit (100.64.0.12) nell'app.",
         }
     )
 
@@ -449,7 +448,7 @@ def rename_gateway_tailscale_ui(
     try:
         service.rename_tailscale_display_name(gateway_id, tailscale_hostname.strip())
         return RedirectResponse(
-            url=_gateway_detail_url(gateway_id, ok="Nome Headscale aggiornato"),
+            url=_gateway_detail_url(gateway_id, ok="Headscale name updated"),
             status_code=303,
         )
     except ValueError as exc:
@@ -471,7 +470,7 @@ def create_peer_ui(
         name = peer_name.strip() or service.next_peer_name(gateway_id)
         result = service.create_peer(gateway_id, name)
         return RedirectResponse(
-            url=_gateway_detail_url(gateway_id, ok=f"Peer {result.peer.name} creato"),
+            url=_gateway_detail_url(gateway_id, ok=f"Peer {result.peer.name} created"),
             status_code=303,
         )
     except ValueError as exc:
@@ -484,7 +483,7 @@ def create_peer_ui(
         session.rollback()
         logger.exception("Peer creation failed for gateway %s", gateway_id)
         return RedirectResponse(
-            url=_gateway_detail_url(gateway_id, error=str(exc) or "Creazione peer fallita"),
+            url=_gateway_detail_url(gateway_id, error=str(exc) or "Peer creation failed"),
             status_code=303,
         )
 
@@ -496,7 +495,7 @@ def download_all_peer_configs(gateway_id: int, session: DbSession) -> Response:
         return PlainTextResponse("Gateway not found", status_code=404)
     peers = PeerRepository(session).list_by_gateway(gateway_id)
     if not peers:
-        return PlainTextResponse("Nessun peer", status_code=404)
+        return PlainTextResponse("No peers", status_code=404)
     service = PeerService(session)
     archive = io.BytesIO()
     with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as bundle:

@@ -7,7 +7,7 @@
     <h1>{{ display_name }}</h1>
     <span class="status-pill status-{{ gateway.status.value }}">{{ gateway.status.value }}</span>
   </div>
-  <p class="muted object-id">ID oggetto: <code>{{ gateway.name }}</code></p>
+  <p class="muted object-id">Object ID: <code>{{ gateway.name }}</code></p>
 </header>
 
 {% if flash_error %}
@@ -28,28 +28,26 @@
 
 {% if gateway.status.value == 'error' %}
 <div class="card card-glass">
-  <p>Provisioning fallito.</p>
+  <p>Provisioning failed.</p>
   <form method="post" action="/orchestrator/ui/gateways/{{ gateway.id }}/retry">
-    <button type="submit" class="btn btn-glow">Riprova provisioning</button>
+    <button type="submit" class="btn btn-glow">Retry provisioning</button>
   </form>
 </div>
 {% elif gateway.status.value == 'provisioning' %}
 <div class="card card-glass notice">
   <p>
-    Provisioning in corso — il gateway verrà registrato come exit node Tailscale.
+    Provisioning…
     {% if provision_progress %}
-    <br><span class="muted">Fase: <strong>{{ provision_progress.label }}</strong>{% if provision_progress.ago %} — aggiornato {{ provision_progress.ago }}{% endif %}</span>
-    {% else %}
-    <br><span class="muted">Config e avvio servizi sulla VM richiedono in genere 30–60 secondi.</span>
+    <br><span class="muted">Stage: <strong>{{ provision_progress.label }}</strong>{% if provision_progress.ago %} — {{ provision_progress.ago }}{% endif %}</span>
     {% endif %}
   </p>
 </div>
 {% elif gateway.status.value == 'pending' %}
 <div class="card card-glass notice">
   <p>
-    Provisioning avviato automaticamente…
+    Provisioning queued…
     {% if provision_progress %}
-    <br><span class="muted">Fase: <strong>{{ provision_progress.label }}</strong>{% if provision_progress.ago %} — aggiornato {{ provision_progress.ago }}{% endif %}</span>
+    <br><span class="muted">Stage: <strong>{{ provision_progress.label }}</strong>{% if provision_progress.ago %} — {{ provision_progress.ago }}{% endif %}</span>
     {% endif %}
   </p>
 </div>
@@ -57,12 +55,12 @@
 
 <div class="detail-grid">
   <section class="card card-glass">
-    <h2>Infrastruttura</h2>
+    <h2>Infrastructure</h2>
     <dl class="meta-list vertical">
-      <div><dt>Endpoint WireGuard</dt><dd><code>{{ endpoint }}</code></dd></div>
-      <div><dt>Gateway WG</dt><dd><code>{{ wg_gateway_ip }}</code></dd></div>
+      <div><dt>WireGuard endpoint</dt><dd><code>{{ endpoint }}</code></dd></div>
+      <div><dt>Gateway WG IP</dt><dd><code>{{ wg_gateway_ip }}</code></dd></div>
       <div><dt>VM IP</dt><dd><code>{{ gateway.vm_ip }}</code></dd></div>
-      <div><dt>Subnet WG</dt><dd><code>{{ gateway.wg_subnet }}</code></dd></div>
+      <div><dt>WG subnet</dt><dd><code>{{ gateway.wg_subnet }}</code></dd></div>
       <div><dt>UDP port</dt><dd>{{ gateway.udp_port }}</dd></div>
       {% if metrics %}
       <div><dt>Tailscale</dt><dd><span class="status-pill {% if metrics.tailscale_online %}online{% else %}offline{% endif %}">{% if metrics.tailscale_online %}online{% else %}offline{% endif %}</span></dd></div>
@@ -70,69 +68,57 @@
       {% endif %}
     </dl>
 
-    <h3 class="section-sub">Exit node Tailscale</h3>
+    <h3 class="section-sub">Tailscale exit node</h3>
     {% if gateway.status.value == 'ready' %}
     <form method="post" action="/orchestrator/ui/gateways/{{ gateway.id }}/tailscale-name" class="rename-form">
-      <label class="field-label" for="tailscale-hostname-input">Nome Headscale</label>
+      <label class="field-label" for="tailscale-hostname-input">Headscale name</label>
       <div class="rename-form-row">
         <input type="text" id="tailscale-hostname-input" class="text-input" name="tailscale_hostname"
                value="{{ gateway.tailscale_hostname }}" required autocomplete="off" spellcheck="false"
                pattern="[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?"
-               title="Lettere, cifre e trattini">
-        <button type="submit" class="btn btn-sm">Rinomina</button>
+               title="Letters, digits, and hyphens">
+        <button type="submit" class="btn btn-sm">Rename</button>
       </div>
-      <p class="muted rename-form-hint">ID oggetto <code>{{ gateway.name }}</code> resta invariato</p>
     </form>
     {% endif %}
     <dl class="meta-list vertical">
-      <div><dt>ID oggetto</dt><dd><code>{{ gateway.name }}</code></dd></div>
-      <div><dt>Ruolo</dt><dd>Exit node del cluster</dd></div>
+      <div><dt>Object ID</dt><dd><code>{{ gateway.name }}</code></dd></div>
+      <div><dt>Role</dt><dd>Cluster exit node</dd></div>
       {% if gateway.exit_node_id != 'pending' %}
-      <div><dt>IP Tailscale</dt><dd><code>{{ gateway.exit_node_id }}</code></dd></div>
+      <div><dt>Tailscale IP</dt><dd><code>{{ gateway.exit_node_id }}</code></dd></div>
       {% if exit_node %}
-      <div><dt>Stato</dt><dd><span class="status-pill {% if exit_node.online %}online{% else %}offline{% endif %}">{% if exit_node.online %}online{% else %}offline{% endif %}</span></div>
+      <div><dt>Status</dt><dd><span class="status-pill {% if exit_node.online %}online{% else %}offline{% endif %}">{% if exit_node.online %}online{% else %}offline{% endif %}</span></div>
       {% if not exit_node.exit_approved %}
-      <div><dt>Route exit</dt><dd><span class="status-pill warn">in approvazione</span></dd></div>
+      <div><dt>Exit route</dt><dd><span class="status-pill warn">pending approval</span></dd></div>
       {% endif %}
-      {% endif %}
-      {% if gateway.exit_node_id != 'pending' %}
-      <div class="card card-glass notice" style="margin-top:1rem">
-        <p><strong>Usare come exit node (sul tuo PC/telefono, non sul CP):</strong></p>
-        <p class="muted">In Tailscale → Exit node → seleziona <code>{{ display_name }}</code> (IP <code>{{ gateway.exit_node_id }}</code>).</p>
-        <p class="muted">Oppure da terminale sul client:</p>
-        <pre class="code-block">tailscale set --exit-node={{ gateway.exit_node_id }}</pre>
-        <p class="muted">Verifica: <code>curl ifconfig.me</code> deve mostrare l'IP pubblico del worker (es. <code>146.190.232.35</code>), non <code>165.227.156.103</code>.</p>
-        <p class="muted">WireGuard backhaul = solo mesh Tailscale (<code>100.64.0.0/10</code>). Per internet serve l'exit node Tailscale sopra.</p>
-      </div>
       {% endif %}
       {% else %}
-      <div><dt>IP Tailscale</dt><dd><span class="muted">disponibile dopo provisioning</span></dd></div>
+      <div><dt>Tailscale IP</dt><dd><span class="muted">after provisioning</span></dd></div>
       {% endif %}
     </dl>
 
     <div class="danger-zone">
-      <button type="button" class="btn btn-danger btn-sm" id="btn-delete-gateway">Elimina gateway</button>
+      <button type="button" class="btn btn-danger btn-sm" id="btn-delete-gateway">Delete gateway</button>
     </div>
   </section>
 
   <section class="card card-glass">
     <div class="card-head row-head">
-      <h2>Peer backhaul WireGuard (solo VPS uplink)</h2>
+      <h2>WireGuard backhaul</h2>
       <div class="peer-head-actions">
         {% if gateway.status.value == 'ready' %}
         {% if peers_online or peers_offline %}
-        <a href="/orchestrator/ui/gateways/{{ gateway.id }}/peers/config" class="btn btn-sm">Scarica .conf uplink</a>
+        <a href="/orchestrator/ui/gateways/{{ gateway.id }}/peers/config" class="btn btn-sm">Download uplink .conf</a>
         {% endif %}
         {% endif %}
       </div>
     </div>
-    <p class="muted"><strong>Non</strong> importare questo .conf su PC o telefono. Va installato solo sulla VPS che fa da uplink internet (es. 178.62). Il cellulare usa l'app Tailscale → exit node <code>{{ gateway.tailscale_hostname or gateway.name }}</code> ({{ gateway.exit_node_id }}).</p>
 
     {% if gateway.status.value != 'ready' %}
-    <p class="muted">Un solo peer backhaul (<code>{{ gateway.name }}-link</code>) viene creato automaticamente al termine del provisioning.</p>
+    <p class="muted">Backhaul peer <code>{{ gateway.name }}-link</code> is created when provisioning completes.</p>
     {% elif peers_online or peers_offline %}
     {% if peers_online %}
-    <h3 class="peer-section-title">Connessi</h3>
+    <h3 class="peer-section-title">Connected</h3>
     <div class="peer-list">
       {% for row in peers_online %}
       {% set peer = row.peer %}
@@ -143,16 +129,16 @@
           <code>{{ peer.allowed_ip }}</code>
         </div>
         <div class="peer-row-actions">
-          <a href="/orchestrator/ui/peers/{{ peer.id }}/config" class="btn btn-sm">Scarica .conf</a>
+          <a href="/orchestrator/ui/peers/{{ peer.id }}/config" class="btn btn-sm">Download .conf</a>
           <form method="post" action="/orchestrator/ui/peers/{{ peer.id }}/regenerate" class="inline">
-            <button type="submit" class="btn btn-sm btn-ghost">Rigenera</button>
+            <button type="submit" class="btn btn-sm btn-ghost">Regenerate</button>
           </form>
           <form method="post" action="/orchestrator/ui/peers/{{ peer.id }}/suspend" class="inline">
-            <button type="submit" class="btn btn-sm btn-ghost">Sospendi</button>
+            <button type="submit" class="btn btn-sm btn-ghost">Suspend</button>
           </form>
           <form method="post" action="/orchestrator/ui/peers/{{ peer.id }}/delete" class="inline"
-                onsubmit="return confirm('Eliminare {{ peer.name }}?');">
-            <button type="submit" class="btn btn-sm btn-ghost danger-text">Elimina</button>
+                onsubmit="return confirm('Delete {{ peer.name }}?');">
+            <button type="submit" class="btn btn-sm btn-ghost danger-text">Delete</button>
           </form>
         </div>
       </article>
@@ -168,31 +154,31 @@
       <article class="peer-row">
         <div class="peer-row-main">
           {% if peer.suspended %}
-          <span class="status-dot warn" title="Sospeso"></span>
+          <span class="status-dot warn" title="Suspended"></span>
           {% else %}
           <span class="status-dot offline" title="Offline"></span>
           {% endif %}
           <strong>{{ peer.name }}</strong>
           <code>{{ peer.allowed_ip }}</code>
-          {% if peer.suspended %}<span class="status-pill warn">sospeso</span>{% endif %}
+          {% if peer.suspended %}<span class="status-pill warn">suspended</span>{% endif %}
         </div>
         <div class="peer-row-actions">
-          <a href="/orchestrator/ui/peers/{{ peer.id }}/config" class="btn btn-sm">Scarica .conf</a>
+          <a href="/orchestrator/ui/peers/{{ peer.id }}/config" class="btn btn-sm">Download .conf</a>
           <form method="post" action="/orchestrator/ui/peers/{{ peer.id }}/regenerate" class="inline">
-            <button type="submit" class="btn btn-sm btn-ghost">Rigenera</button>
+            <button type="submit" class="btn btn-sm btn-ghost">Regenerate</button>
           </form>
           {% if peer.suspended %}
           <form method="post" action="/orchestrator/ui/peers/{{ peer.id }}/resume" class="inline">
-            <button type="submit" class="btn btn-sm">Riprendi</button>
+            <button type="submit" class="btn btn-sm">Resume</button>
           </form>
           {% else %}
           <form method="post" action="/orchestrator/ui/peers/{{ peer.id }}/suspend" class="inline">
-            <button type="submit" class="btn btn-sm btn-ghost">Sospendi</button>
+            <button type="submit" class="btn btn-sm btn-ghost">Suspend</button>
           </form>
           {% endif %}
           <form method="post" action="/orchestrator/ui/peers/{{ peer.id }}/delete" class="inline"
-                onsubmit="return confirm('Eliminare {{ peer.name }}?');">
-            <button type="submit" class="btn btn-sm btn-ghost danger-text">Elimina</button>
+                onsubmit="return confirm('Delete {{ peer.name }}?');">
+            <button type="submit" class="btn btn-sm btn-ghost danger-text">Delete</button>
           </form>
         </div>
       </article>
@@ -200,7 +186,7 @@
     </div>
     {% endif %}
     {% else %}
-    <p class="muted">Creazione peer in corso… ricarica tra qualche secondo.</p>
+    <p class="muted">Creating peer…</p>
     {% endif %}
   </section>
 </div>
@@ -208,16 +194,15 @@
 <dialog id="gateway-delete-modal" class="modal">
   <form method="post" action="/orchestrator/ui/gateways/{{ gateway.id }}/delete" class="modal-card" id="gateway-delete-form">
     <div class="modal-header">
-      <h2>Elimina gateway</h2>
-      <button type="button" class="btn btn-icon modal-close" id="gateway-delete-modal-close" aria-label="Chiudi">✕</button>
+      <h2>Delete gateway</h2>
+      <button type="button" class="btn btn-icon modal-close" id="gateway-delete-modal-close" aria-label="Close">✕</button>
     </div>
     <p class="muted">
-      Confermi l'eliminazione di <strong>{{ gateway.name }}</strong>?
-      La VM verrà rimossa dal worker e l'operazione non è reversibile.
+      Delete <strong>{{ gateway.name }}</strong>? This removes the VM from the worker and cannot be undone.
     </p>
     <div class="modal-actions">
-      <button type="button" class="btn btn-ghost" id="gateway-delete-cancel">Annulla</button>
-      <button type="submit" class="btn btn-danger">Elimina</button>
+      <button type="button" class="btn btn-ghost" id="gateway-delete-cancel">Cancel</button>
+      <button type="submit" class="btn btn-danger">Delete</button>
     </div>
   </form>
 </dialog>

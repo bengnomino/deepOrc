@@ -18,13 +18,11 @@ CLIENT_TAG="${HEADSCALE_CLIENT_TAG:-tag:client}"
 
 USER_ID=$(headscale users list -o json | python3 -c "import sys,json; u=json.load(sys.stdin); print(next(x['id'] for x in u if x['name']=='${CLIENT_USER}'))")
 
-echo "Auth key client mobile (user=${CLIENT_USER}, tag=${CLIENT_TAG}):"
+echo "Mobile client auth key (user=${CLIENT_USER}, tag=${CLIENT_TAG}):"
 CLIENT_KEY=$(headscale preauthkeys create -u "$USER_ID" --reusable -e "$EXPIRY" --tags "$CLIENT_TAG" -o json | python3 -c "import sys,json; print(json.load(sys.stdin).get('key',''))")
 echo "$CLIENT_KEY"
 
 echo ""
-echo "Sul telefono (Tailscale app):"
+echo "Tailscale app:"
 echo "  Login server: ${LOGIN_SERVER}"
 echo "  Auth key: ${CLIENT_KEY}"
-echo "  Abilita: Use Tailscale DNS (MagicDNS)"
-echo "  Exit node: ex-002 (100.64.0.10) — tutto il DNS passa dall'exit, niente leak ISP"

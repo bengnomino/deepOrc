@@ -2,7 +2,7 @@
 
 ## Server (test)
 - **Host:** `root@<VPS_IP>` (DigitalOcean, KVM)
-- **SSH key:** `~/.ssh/deasit` (permessi `600`)
+- **SSH key:** `~/.ssh/deasit` (mode `600`)
 - **Domain:** `https://deeporc.harlock.network`
 
 ## One-shot bootstrap
@@ -11,30 +11,30 @@
 git clone git@github.com:bengnomino/deeporc.git /opt/deeporc
 cd /opt/deeporc
 cp deploy/hosts/host.env.example deploy/hosts/host.env
-# edita DOMAIN (+ CLOUDFLARE_* se usi Cloudflare)
+# edit DOMAIN (+ CLOUDFLARE_* if using Cloudflare)
 sudo ./deploy/bootstrap-vps.sh deploy/hosts/host.env
 ```
 
-Bootstrap installa lo stack (Incus, Headscale, Caddy, orchestrator) e importa **`local:gw-golden`** dal repo. Il primo gateway lo crei dalla UI.
+Bootstrap installs the stack (Incus, Headscale, Caddy, orchestrator) and imports **`local:gw-golden`** from the repo. Create the first gateway from the UI.
 
-## Servizi attivi
+## Active services
 
-| Servizio | Endpoint | Note |
-|----------|----------|------|
+| Service | Endpoint | Notes |
+|---------|----------|-------|
 | Orchestrator API | `https://deeporc.harlock.network/orchestrator/api/v1/` | Auth: `X-API-Key` |
 | Health | `https://deeporc.harlock.network/orchestrator/health` | |
 | Headscale | `https://deeporc.harlock.network` | `/api/v1` = Headscale REST |
-| Gateway agent wheel | `https://deeporc.harlock.network/packages/` | Legacy cloud-init path (non usato con `gw-golden`) |
+| Gateway agent wheel | `https://deeporc.harlock.network/packages/` | Legacy cloud-init path (not used with `gw-golden`) |
 
 ## Headscale (v0.29)
 
-**Gateway VM:** preauth key creata automaticamente dall'orchestratore.
+**Gateway VM:** preauth key created automatically by the orchestrator.
 
-**Exit node Android:** manuale dopo bootstrap:
+**Android exit node:** manual after bootstrap:
 
 ```bash
 sudo /opt/deeporc/deploy/headscale-keys.sh
-# Sul telefono: login server https://deeporc.harlock.network
+# On the phone: login server https://deeporc.harlock.network
 # tailscale up --advertise-exit-node --authkey <KEY>
 sudo headscale routes list
 sudo headscale routes enable -r <ROUTE_ID>
@@ -42,13 +42,13 @@ sudo headscale routes enable -r <ROUTE_ID>
 
 ## Firewall (nftables)
 
-Regole leggibili in `deploy/nftables/` — applicate da `deploy/firewall-nft.sh` (CP) e `deploy/firewall-worker-nft.sh` (worker).
+Rules live in `deploy/nftables/` — applied by `deploy/firewall-nft.sh` (CP) and `deploy/firewall-worker-nft.sh` (worker).
 
-| Porta | CP | Worker |
-|-------|----|--------|
-| TCP 22 | sì | sì |
-| TCP 80/443 | sì | no |
-| UDP 51001–52000 | sì | sì |
-| TCP 8080/8000 | solo da `10.10.0.0/16` | no |
+| Port | CP | Worker |
+|------|----|--------|
+| TCP 22 | yes | yes |
+| TCP 80/443 | yes | no |
+| UDP 51001–52000 | yes | yes |
+| TCP 8080/8000 | from `10.10.0.0/16` only | no |
 
-Riapplica: `sudo ./deploy/firewall-nft.sh deploy/hosts/host.env`
+Re-apply: `sudo ./deploy/firewall-nft.sh deploy/hosts/host.env`

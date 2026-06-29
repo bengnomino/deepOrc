@@ -1,11 +1,11 @@
 <!DOCTYPE html>
-<html lang="it">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
-  <title>Registrazione</title>
+  <title>Registration</title>
   <link rel="stylesheet" href="{{ static_url('register.css') }}">
 </head>
 <body>
@@ -14,15 +14,14 @@
       {% if error %}
       <p class="register-message">{{ error }}</p>
       {% elif status == 'approved' %}
-      <p class="register-label is-approved">Approvato</p>
-      <p class="register-message is-subtle">Puoi tornare all'app Tailscale.</p>
+      <p class="register-label is-approved">Approved</p>
+      <p class="register-message is-subtle">You can return to the Tailscale app.</p>
       {% elif status == 'rejected' %}
-      <p class="register-label">Rifiutato</p>
-      <p class="register-message">Contatta l'amministratore.</p>
+      <p class="register-label">Rejected</p>
+      <p class="register-message">Contact your administrator.</p>
       {% else %}
-      <p class="register-label">Codice di verifica</p>
+      <p class="register-label">Verification code</p>
       <p class="register-code" id="display-code">{{ display_code }}</p>
-      <p class="register-hint" id="register-hint">Tocca un punto qualsiasi per copiare il codice e comunicarlo all'amministratore.</p>
       {% endif %}
     </div>
   </main>
@@ -30,20 +29,6 @@
   <script>
     (function () {
       const screen = document.querySelector(".register-screen");
-      const hintEl = document.getElementById("register-hint");
-      const defaultHint = hintEl ? hintEl.textContent : "";
-      let resetTimer;
-
-      function showCopied() {
-        if (!hintEl) return;
-        hintEl.textContent = "Codice copiato.";
-        hintEl.classList.add("is-copied");
-        clearTimeout(resetTimer);
-        resetTimer = setTimeout(function () {
-          hintEl.textContent = defaultHint;
-          hintEl.classList.remove("is-copied");
-        }, 2000);
-      }
 
       function fallbackCopy(text) {
         const ta = document.createElement("textarea");
@@ -56,7 +41,7 @@
         ta.select();
         ta.setSelectionRange(0, text.length);
         try {
-          if (document.execCommand("copy")) showCopied();
+          document.execCommand("copy");
         } catch (e) {}
         document.body.removeChild(ta);
       }
@@ -68,7 +53,7 @@
         if (!code) return;
 
         if (navigator.clipboard && navigator.clipboard.writeText) {
-          navigator.clipboard.writeText(code).then(showCopied).catch(function () {
+          navigator.clipboard.writeText(code).catch(function () {
             fallbackCopy(code);
           });
         } else {
@@ -88,13 +73,13 @@
             if (data.status === "approved") {
               screen.classList.remove("is-copyable");
               document.querySelector(".register-stack").innerHTML =
-                '<p class="register-label is-approved">Approvato</p><p class="register-message is-subtle">Puoi tornare all\'app Tailscale.</p>';
+                '<p class="register-label is-approved">Approved</p><p class="register-message is-subtle">You can return to the Tailscale app.</p>';
               return;
             }
             if (data.status === "rejected") {
               screen.classList.remove("is-copyable");
               document.querySelector(".register-stack").innerHTML =
-                '<p class="register-label">Rifiutato</p><p class="register-message">Contatta l\'amministratore.</p>';
+                '<p class="register-label">Rejected</p><p class="register-message">Contact your administrator.</p>';
               return;
             }
             setTimeout(poll, 3000);

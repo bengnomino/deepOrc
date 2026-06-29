@@ -1,4 +1,4 @@
-"""Public /register/* — codice a 6 cifre, approvazione solo da admin UI."""
+"""Public /register/* — 6-digit code, admin approval via UI."""
 
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -23,7 +23,7 @@ def register_page(
         return templates.TemplateResponse(
             request,
             "register_pending.html",
-            {"error": "Richiesta non valida", "display_code": None, "registration_key": None},
+            {"error": "Invalid request", "display_code": None, "registration_key": None},
             status_code=400,
         )
     row = RegistrationRequestRepository(session).touch_pending(key)
