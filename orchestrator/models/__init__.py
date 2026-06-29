@@ -3,6 +3,7 @@ from orchestrator.models.gateway import Gateway, GatewayStatus
 from orchestrator.models.job import Job, JobStatus, JobType
 from orchestrator.models.metrics import GatewayMetric, PeerMetric
 from orchestrator.models.peer import Peer
+from orchestrator.models.peer_group import PeerGroup
 from orchestrator.models.registration_request import RegistrationRequest, RegistrationRequestStatus
 from orchestrator.models.resources import IpAllocation, PortAllocation
 from orchestrator.models.worker import Worker, WorkerStatus
@@ -18,6 +19,7 @@ __all__ = [
     "JobStatus",
     "JobType",
     "Peer",
+    "PeerGroup",
     "PeerMetric",
     "PortAllocation",
     "RegistrationRequest",

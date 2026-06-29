@@ -21,6 +21,11 @@ class Gateway(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     worker_id: Mapped[int] = mapped_column(ForeignKey("workers.id"), nullable=False, index=True)
+    peer_group_id: Mapped[int | None] = mapped_column(
+        ForeignKey("peer_groups.id"), nullable=True, index=True
+    )
+    lan_ip: Mapped[str | None] = mapped_column(String(45), nullable=True)
+    macvlan_slot: Mapped[int | None] = mapped_column(Integer, nullable=True)
     name: Mapped[str] = mapped_column(String(128), unique=True, nullable=False, index=True)
     incus_instance: Mapped[str] = mapped_column(String(128), nullable=False)
     vm_ip: Mapped[str] = mapped_column(String(45), nullable=False)
@@ -46,12 +51,14 @@ class Gateway(Base):
 
     peers: Mapped[list["Peer"]] = relationship("Peer", back_populates="gateway", cascade="all, delete-orphan")
     worker: Mapped["Worker"] = relationship("Worker", back_populates="gateways")
+    peer_group: Mapped["PeerGroup | None"] = relationship("PeerGroup", back_populates="gateways")
     jobs: Mapped[list["Job"]] = relationship("Job", back_populates="gateway", cascade="all, delete-orphan")
     metrics: Mapped[list["GatewayMetric"]] = relationship(
         "GatewayMetric", back_populates="gateway", cascade="all, delete-orphan"
     )
 
 
+from orchestrator.models.peer_group import PeerGroup  # noqa: E402
 from orchestrator.models.job import Job  # noqa: E402
 from orchestrator.models.metrics import GatewayMetric  # noqa: E402
 from orchestrator.models.peer import Peer  # noqa: E402

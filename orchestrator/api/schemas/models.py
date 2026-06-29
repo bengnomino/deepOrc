@@ -37,6 +37,9 @@ class GatewayResponse(BaseModel):
     id: int
     name: str
     worker_id: int
+    peer_group_id: int | None = None
+    lan_ip: str | None = None
+    macvlan_slot: int | None = None
     status: GatewayStatus
     vm_ip: str
     udp_port: int
@@ -125,6 +128,54 @@ class WorkerResponse(BaseModel):
 class GatewayCreateResponse(BaseModel):
     gateway: GatewayResponse
     job_id: int
+
+
+class PeerGroupCreateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=128)
+    worker_id: int = Field(description="Incus worker hosting gateways in this group")
+    lan_start_ip: str = Field(
+        min_length=7,
+        max_length=45,
+        description="First deeper LAN IP for macvlan assignment (e.g. 192.168.13.100)",
+    )
+    lan_subnet: str | None = Field(
+        default=None,
+        max_length=18,
+        description="Deeper LAN CIDR; defaults to /24 around lan_start_ip",
+    )
+    lan_gateway: str | None = Field(
+        default=None,
+        max_length=45,
+        description="Default route on the deeper LAN (e.g. 192.168.13.254)",
+    )
+    parent_iface: str | None = Field(
+        default=None,
+        max_length=64,
+        description="Host parent interface for macvlan (e.g. ens18)",
+    )
+
+
+class PeerGroupResponse(BaseModel):
+    id: int
+    name: str
+    worker_id: int
+    lan_subnet: str
+    lan_start_ip: str
+    lan_gateway: str | None = None
+    parent_iface: str | None = None
+    gateway_count: int = 0
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class PeerGroupCreateGatewaysRequest(BaseModel):
+    count: int = Field(ge=1, le=64, description="How many gateways to create in this group")
+
+
+class PeerGroupCreateGatewaysResponse(BaseModel):
+    group: PeerGroupResponse
+    gateways: list[GatewayCreateResponse]
 
 
 class PeerCreateRequest(BaseModel):

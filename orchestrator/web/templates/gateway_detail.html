@@ -62,6 +62,15 @@
       <div><dt>VM IP</dt><dd><code>{{ gateway.vm_ip }}</code></dd></div>
       <div><dt>WG subnet</dt><dd><code>{{ gateway.wg_subnet }}</code></dd></div>
       <div><dt>UDP port</dt><dd>{{ gateway.udp_port }}</dd></div>
+      {% if gateway.lan_ip %}
+      <div><dt>Deeper LAN IP</dt><dd><code>{{ gateway.lan_ip }}</code></dd></div>
+      {% endif %}
+      {% if gateway.macvlan_slot %}
+      <div><dt>Macvlan</dt><dd><code>mac_{{ gateway.macvlan_slot }}</code></dd></div>
+      {% endif %}
+      {% if peer_group %}
+      <div><dt>Peer group</dt><dd><a href="/orchestrator/ui/peer-groups/{{ peer_group.id }}">{{ peer_group.name }}</a></dd></div>
+      {% endif %}
       {% if metrics %}
       <div><dt>Tailscale</dt><dd><span class="status-pill {% if metrics.tailscale_online %}online{% else %}offline{% endif %}">{% if metrics.tailscale_online %}online{% else %}offline{% endif %}</span></dd></div>
       <div><dt>WireGuard</dt><dd><span class="status-pill {% if metrics.wg_online %}online{% else %}offline{% endif %}">{% if metrics.wg_online %}up{% else %}down{% endif %}</span></dd></div>

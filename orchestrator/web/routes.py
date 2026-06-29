@@ -26,6 +26,7 @@ from orchestrator.repositories.job_repo import JobRepository
 from orchestrator.repositories.metrics_repo import MetricsRepository
 from orchestrator.repositories.peer_repo import PeerRepository
 from orchestrator.services.gateway_service import CreateGatewayRequest, GatewayService
+from orchestrator.services.peer_group_service import CreatePeerGroupRequest, PeerGroupService
 from orchestrator.services.peer_service import PeerService
 from orchestrator.services.worker_service import WorkerService
 from orchestrator.web.views import (
@@ -37,6 +38,7 @@ from orchestrator.web.views import (
     worker_host_label,
 )
 from orchestrator.web.templating import templates
+from orchestrator.lan.ipam import remaining_lan_capacity
 from orchestrator.workers.provisioning import schedule_provisioning_after_request
 
 logger = logging.getLogger(__name__)
@@ -186,12 +188,14 @@ def _pending_registrations(session: DbSession) -> list:
 def dashboard(request: Request, session: DbSession, error: str | None = None) -> HTMLResponse:
     workers, unassigned, headscale_error = _dashboard_workers(session)
     pending_regs = _pending_registrations(session)
+    peer_groups = PeerGroupService(session).list_groups()
     settings = get_settings()
     return templates.TemplateResponse(
         request,
         "dashboard.html",
         {
             "workers": workers,
+            "peer_groups": peer_groups,
             "worker_choices": _worker_choices(session),
             "worker_choices_json": json.dumps(_worker_choices(session)),
             "unassigned_exit_nodes": unassigned,
@@ -255,6 +259,87 @@ def reject_registration_ui(registration_key: str, session: DbSession) -> Redirec
     RegistrationRequestRepository(session).mark_rejected(registration_key.strip())
     session.commit()
     return RedirectResponse(url="/orchestrator/ui", status_code=303)
+
+
+@router.post("/peer-groups/create")
+def create_peer_group_ui(
+    session: DbSession,
+    name: str = Form(...),
+    worker_id: int = Form(...),
+    lan_start_ip: str = Form(...),
+    lan_subnet: str = Form(""),
+    lan_gateway: str = Form(""),
+    parent_iface: str = Form(""),
+) -> RedirectResponse:
+    service = PeerGroupService(session)
+    try:
+        group = service.create_group(
+            CreatePeerGroupRequest(
+                name=name.strip(),
+                worker_id=worker_id,
+                lan_start_ip=lan_start_ip.strip(),
+                lan_subnet=lan_subnet.strip() or None,
+                lan_gateway=lan_gateway.strip() or None,
+                parent_iface=parent_iface.strip() or None,
+            )
+        )
+        return RedirectResponse(url=f"/orchestrator/ui/peer-groups/{group.id}", status_code=303)
+    except ValueError as exc:
+        return RedirectResponse(
+            url=f"/orchestrator/ui?error={quote(str(exc))}",
+            status_code=303,
+        )
+
+
+@router.get("/peer-groups/{group_id}", response_class=HTMLResponse)
+def peer_group_detail(
+    request: Request,
+    group_id: int,
+    session: DbSession,
+    error: str | None = None,
+    ok: str | None = None,
+) -> HTMLResponse:
+    group = PeerGroupService(session).get_group(group_id)
+    if not group:
+        return RedirectResponse(url="/orchestrator/ui", status_code=303)
+    gateways = [g for g in GatewayRepository(session).list_all() if g.peer_group_id == group_id]
+    return templates.TemplateResponse(
+        request,
+        "peer_group_detail.html",
+        {
+            "title": group.name,
+            "group": group,
+            "gateways": gateways,
+            "lan_remaining": remaining_lan_capacity(session, group),
+            "flash_error": error,
+            "flash_ok": ok,
+        },
+    )
+
+
+@router.post("/peer-groups/{group_id}/gateways")
+def create_group_gateways_ui(
+    group_id: int,
+    session: DbSession,
+    background_tasks: BackgroundTasks,
+    count: int = Form(...),
+) -> RedirectResponse:
+    service = PeerGroupService(session)
+    try:
+        result = service.create_gateways(group_id, count)
+        for item in result.gateways:
+            schedule_provisioning_after_request(
+                background_tasks, item.gateway.id, item.job.id
+            )
+        return RedirectResponse(
+            url=f"/orchestrator/ui/peer-groups/{group_id}?ok={quote(f'Created {len(result.gateways)} gateway(s)')}",
+            status_code=303,
+        )
+    except ValueError as exc:
+        return RedirectResponse(
+            url=f"/orchestrator/ui/peer-groups/{group_id}?error={quote(str(exc))}",
+            status_code=303,
+        )
 
 
 @router.get("/gateways/new")
@@ -406,6 +491,7 @@ def gateway_detail(
             "peers_offline": peers_offline,
             "metrics": metrics,
             "provision_progress": provision_progress,
+            "peer_group": gateway.peer_group,
             "flash_error": error,
             "flash_ok": ok,
         },

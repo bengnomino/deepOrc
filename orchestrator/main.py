@@ -8,7 +8,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import RedirectResponse, Response
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 
-from orchestrator.api.routes import gateways, monitoring, peers, workers
+from orchestrator.api.routes import gateways, monitoring, peer_groups, peers, workers
 from orchestrator.config import get_settings
 from orchestrator.models.base import init_db
 from orchestrator.web.register_routes import router as register_router
@@ -117,6 +117,7 @@ def create_app() -> FastAPI:
     app.include_router(register_router)
     app.include_router(web_router, prefix=ui_prefix)
     app.include_router(gateways.router, prefix=api_prefix)
+    app.include_router(peer_groups.router, prefix=api_prefix)
     app.include_router(peers.router, prefix=api_prefix)
     app.include_router(monitoring.router, prefix=api_prefix)
     app.include_router(workers.router, prefix=api_prefix)

@@ -10,6 +10,7 @@
       <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/></svg>
       New gateway
     </button>
+    <button type="button" class="btn btn-ghost" id="btn-new-peer-group">Peer group</button>
     <button type="button" class="btn btn-ghost" id="btn-add-worker">Add worker</button>
     <button type="button" class="btn btn-ghost" id="btn-add-exit-node">Mobile client</button>
   </div>
@@ -64,6 +65,25 @@
         {% endif %}
       </div>
     </div>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+{% if peer_groups %}
+<section class="card card-glass">
+  <div class="card-head row-head">
+    <h2>Peer groups</h2>
+    <button type="button" class="btn btn-sm btn-glow" id="btn-new-peer-group-inline">New group</button>
+  </div>
+  <div class="chip-grid">
+    {% for group in peer_groups %}
+    <a href="/orchestrator/ui/peer-groups/{{ group.id }}" class="chip-card chip-card-link">
+      <strong>{{ group.name }}</strong>
+      <code>{{ group.lan_subnet }}</code>
+      <span class="muted">from {{ group.lan_start_ip }}</span>
+      <span class="muted">{{ group.gateways|length }} gateway(s)</span>
+    </a>
     {% endfor %}
   </div>
 </section>
@@ -188,6 +208,46 @@
       <div class="modal-actions">
         <button type="submit" class="btn btn-glow" id="gateway-create-submit">Create gateway</button>
       </div>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="peer-group-modal" class="modal">
+  <form method="post" action="/orchestrator/ui/peer-groups/create" class="modal-card">
+    <div class="modal-header">
+      <h2>New peer group</h2>
+      <button type="button" class="btn btn-icon modal-close" id="peer-group-modal-close" aria-label="Close">✕</button>
+    </div>
+    <label class="field-label">
+      Name
+      <input type="text" name="name" class="text-input" required placeholder="deeper-lan-1">
+    </label>
+    <label class="field-label">
+      Worker
+      <select name="worker_id" class="text-input" required>
+        {% for row in worker_choices %}
+        <option value="{{ row.id }}" {% if not row.online %}disabled{% endif %}>{{ row.display_name }}{% if not row.online %} (offline){% endif %}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label class="field-label">
+      Start IP
+      <input type="text" name="lan_start_ip" class="text-input" required placeholder="192.168.13.100">
+    </label>
+    <label class="field-label">
+      Subnet <span class="muted">(optional, default /24)</span>
+      <input type="text" name="lan_subnet" class="text-input" placeholder="192.168.13.0/24">
+    </label>
+    <label class="field-label">
+      LAN gateway <span class="muted">(optional)</span>
+      <input type="text" name="lan_gateway" class="text-input" placeholder="192.168.13.254">
+    </label>
+    <label class="field-label">
+      Parent interface <span class="muted">(optional)</span>
+      <input type="text" name="parent_iface" class="text-input" placeholder="ens18">
+    </label>
+    <div class="modal-actions">
+      <button type="submit" class="btn btn-glow">Create group</button>
     </div>
   </form>
 </dialog>

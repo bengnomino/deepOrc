@@ -413,4 +413,10 @@
   if (document.querySelector(".gateway-tile-deleting")) {
     setTimeout(() => window.location.reload(), 3000);
   }
+
+  const peerGroupModal = document.getElementById("peer-group-modal");
+  const openPeerGroup = () => peerGroupModal?.showModal();
+  document.getElementById("btn-new-peer-group")?.addEventListener("click", openPeerGroup);
+  document.getElementById("btn-new-peer-group-inline")?.addEventListener("click", openPeerGroup);
+  wireDialogClose(peerGroupModal, document.getElementById("peer-group-modal-close"));
 })();

@@ -54,6 +54,7 @@ class Worker(Base):
     )
 
     gateways: Mapped[list["Gateway"]] = relationship("Gateway", back_populates="worker")
+    peer_groups: Mapped[list["PeerGroup"]] = relationship("PeerGroup", back_populates="worker")
 
     @property
     def is_local(self) -> bool:
@@ -61,3 +62,4 @@ class Worker(Base):
 
 
 from orchestrator.models.gateway import Gateway  # noqa: E402
+from orchestrator.models.peer_group import PeerGroup  # noqa: E402

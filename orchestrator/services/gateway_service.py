@@ -40,6 +40,9 @@ class CreateGatewayRequest:
     gateway_name: str | None = None
     udp_port: int | None = None
     worker_id: int | None = None
+    peer_group_id: int | None = None
+    lan_ip: str | None = None
+    macvlan_slot: int | None = None
 
 
 @dataclass
@@ -96,6 +99,9 @@ class GatewayService:
 
         gateway = Gateway(
             worker_id=worker.id,
+            peer_group_id=request.peer_group_id,
+            lan_ip=request.lan_ip,
+            macvlan_slot=request.macvlan_slot,
             name=gateway_name,
             incus_instance=f"gw-{gateway_name}",
             vm_ip=vm_ip,
