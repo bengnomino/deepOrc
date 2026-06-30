@@ -1,5 +1,6 @@
 """Gateway business logic — deepOrc: each gateway advertises as Tailscale exit node."""
 
+import logging
 from dataclasses import dataclass
 
 from sqlalchemy.orm import Session
@@ -34,6 +35,17 @@ from orchestrator.naming import GATEWAY_PREFIX, collect_gateway_names, next_sequ
 from orchestrator.wg import allocate_wg_subnet, generate_keypair
 
 EXIT_NODE_PENDING = "pending"
+logger = logging.getLogger(__name__)
+
+
+def _gateway_headscale_hostnames(gateway: Gateway) -> list[str]:
+    names: list[str] = []
+    seen: set[str] = set()
+    for value in (gateway.tailscale_hostname, gateway.name, gateway.incus_instance):
+        if value and value not in seen:
+            seen.add(value)
+            names.append(value)
+    return names
 
 
 @dataclass
@@ -426,12 +438,22 @@ class GatewayService:
             else None
         )
         try:
-            delete_gateway_headscale_node(
+            removed = delete_gateway_headscale_node(
                 tailscale_ip=tailscale_ip,
-                hostnames=[gateway.tailscale_hostname, gateway.name],
+                hostnames=_gateway_headscale_hostnames(gateway),
             )
-        except HeadscaleError:
-            pass
+            if not removed:
+                logger.warning(
+                    "No Headscale node found for gateway %s (%s)",
+                    gateway.name,
+                    tailscale_ip or "no tailscale IP",
+                )
+        except HeadscaleError as exc:
+            logger.warning(
+                "Headscale node delete failed for gateway %s: %s",
+                gateway.name,
+                exc,
+            )
 
         worker = self._resolve_worker(gateway)
         try:

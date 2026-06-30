@@ -57,7 +57,7 @@ def test_execute_delete_gateway_removes_headscale_node():
 
     delete_node.assert_called_once_with(
         tailscale_ip="100.64.0.7",
-        hostnames=["gw-000", "gw-000"],
+        hostnames=["gw-000", "gw-gw-000"],
     )
     repo.delete.assert_called_once_with(gateway)
     session.commit.assert_called_once()
@@ -94,5 +94,5 @@ def test_execute_delete_gateway_skips_pending_exit_node_ip():
 
     delete_node.assert_called_once_with(
         tailscale_ip=None,
-        hostnames=["gw-000", "gw-000"],
+        hostnames=["gw-000", "gw-gw-000"],
     )
