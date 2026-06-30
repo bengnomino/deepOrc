@@ -124,9 +124,11 @@
       {% for group in section.peer_groups %}
       <a href="/orchestrator/ui/peer-groups/{{ group.id }}" class="peer-group-tile">
         <span class="peer-group-tile-name">{{ group.name }}</span>
+        <span class="peer-group-tile-count muted">
+          {{ group.gateways|length }} gateway{% if group.gateways|length != 1 %}s{% endif %}
+        </span>
         <span class="peer-group-tile-meta muted">
           from <code>{{ group.lan_start_ip }}</code>
-          · {{ group.gateways|length }} gateway{% if group.gateways|length != 1 %}s{% endif %}
         </span>
       </a>
       {% endfor %}

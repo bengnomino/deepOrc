@@ -254,6 +254,11 @@ body {
   letter-spacing: -0.01em;
 }
 
+.peer-group-tile-count {
+  font-size: 0.8rem;
+  line-height: 1.3;
+}
+
 .peer-group-tile-meta {
   font-size: 0.8rem;
   line-height: 1.4;
