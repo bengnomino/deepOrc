@@ -16,7 +16,6 @@
           <span class="gateway-metric-label">WG UPLINK</span>
           <span class="metric-dot{% if row.wg_online %} on{% endif %}" title="WireGuard"></span>
         </div>
-        <span class="gateway-metric-value">{{ row.peer_online }}/{{ row.peer_total }}</span>
         {% if row.wg_gateway_ip %}
         <code class="gateway-metric-ip">{{ row.wg_gateway_ip }}</code>
         {% else %}
