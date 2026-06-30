@@ -20,30 +20,57 @@ _run() {
 	fi
 }
 
-_iptables_del_loop() {
-	local table="${1:-}"
-	local pattern="$2"
-	local cmd=(iptables)
-	[[ -n "$table" ]] && cmd+=(-t "$table")
-	local line
+_table_numeric() {
+	local table="$1"
+	if [[ "$table" =~ ^deeporc-([0-9]+)$ ]]; then
+		echo "${BASH_REMATCH[1]}"
+	else
+		echo "$table"
+	fi
+}
+
+_iptables_del_forward() {
+	local in_if="$1"
+	local out_if="$2"
+	local line args
 	while IFS= read -r line; do
 		[[ -z "$line" ]] && continue
-		local args
 		args=$(sed 's/^-A /-D /' <<<"$line")
-		_run "${cmd[@]}" $args 2>/dev/null || true
-	done < <("${cmd[@]}" -S 2>/dev/null | grep -E "$pattern" || true)
+		_run iptables $args 2>/dev/null || true
+	done < <(
+		iptables -S FORWARD 2>/dev/null | awk -v i="$in_if" -v o="$out_if" \
+			'$1 == "-A" && $2 == "FORWARD" && index($0, "-i " i " ") && index($0, "-o " o " ")'
+	)
+}
+
+_iptables_del_masquerade() {
+	local out_if="$1"
+	local line args
+	while IFS= read -r line; do
+		[[ -z "$line" ]] && continue
+		args=$(sed 's/^-A /-D /' <<<"$line")
+		_run iptables -t nat $args 2>/dev/null || true
+	done < <(
+		iptables -t nat -S POSTROUTING 2>/dev/null | awk -v o="$out_if" \
+			'$1 == "-A" && $2 == "POSTROUTING" && index($0, "-o " o " ") && index($0, "MASQUERADE")'
+	)
 }
 
 _delete_rules_for_table() {
 	local table="$1"
+	local numeric
+	numeric=$(_table_numeric "$table")
 	local rule pref
 	while IFS= read -r rule; do
 		[[ -z "$rule" ]] && continue
 		pref=${rule%%:*}
 		[[ "$pref" =~ ^[0-9]+$ ]] || continue
-		_log "ip rule pref ${pref} (table ${table})"
+		_log "ip rule pref ${pref} (table ${numeric})"
 		_run ip rule del pref "$pref" 2>/dev/null || true
-	done < <(ip rule show 2>/dev/null | grep -E "lookup ${table}( |$)" || true)
+	done < <(
+		ip rule show 2>/dev/null | awk -v t="$table" -v n="$numeric" \
+			'/lookup/ && ($NF == t || $NF == n) {print}'
+	)
 }
 
 _deeporc_wg_ifaces() {
@@ -60,7 +87,7 @@ _deeporc_wg_ifaces() {
 _deeporc_mac_ifaces() {
 	ip -o link show type macvlan 2>/dev/null \
 		| awk -F': ' '{print $2}' | cut -d@ -f1 \
-		| grep -E '^mac_[0-9]+$' || true
+		| awk '/^mac_[0-9]+$/' || true
 }
 
 _deeporc_table_ids() {
@@ -71,15 +98,16 @@ _deeporc_table_ids() {
 
 _table_for_wg() {
 	local wg_if="$1"
-	ip rule show iif "$wg_if" 2>/dev/null \
-		| awk '/lookup/ {print $NF; exit}'
+	local table
+	table=$(ip rule show iif "$wg_if" 2>/dev/null | awk '/lookup/ {print $NF; exit}')
+	[[ -n "$table" ]] && _table_numeric "$table"
 }
 
 _table_for_mac() {
 	local mac="$1"
 	local slot="${mac#mac_}"
 	ip rule show 2>/dev/null \
-		| awk -v t="$slot" '$0 ~ "lookup " t "( |$)" {print t; exit}'
+		| awk -v t="$slot" '/lookup/ && ($NF == t || $NF == "deeporc-" t) {print t; exit}'
 }
 
 _mac_for_wg() {
@@ -99,9 +127,9 @@ _cleanup_wg() {
 	_run rm -f "/etc/wireguard/${wg_if}.conf"
 
 	if [[ -n "$mac" ]]; then
-		_iptables_del_loop "" "-i ${wg_if} -o ${mac}"
-		_iptables_del_loop "" "-i ${mac} -o ${wg_if}"
-		_iptables_del_loop nat "-o ${mac}.*MASQUERADE"
+		_iptables_del_forward "$wg_if" "$mac"
+		_iptables_del_forward "$mac" "$wg_if"
+		_iptables_del_masquerade "$mac"
 	fi
 	if [[ -n "$table" ]]; then
 		_delete_rules_for_table "$table"
@@ -117,7 +145,7 @@ _cleanup_mac() {
 	if [[ -z "$table" ]]; then
 		table=$(_table_for_mac "$mac" || true)
 	fi
-	_iptables_del_loop nat "-o ${mac}.*MASQUERADE"
+	_iptables_del_masquerade "$mac"
 	if [[ -n "$table" ]]; then
 		_delete_rules_for_table "$table"
 		_run ip route flush table "$table" 2>/dev/null || true
