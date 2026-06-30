@@ -42,10 +42,7 @@
     <h2>Gateways</h2>
     {% if lan_remaining > 0 %}
     <form method="post" action="/orchestrator/ui/peer-groups/{{ group.id }}/gateways" class="gateway-create-form">
-      <label class="field-label inline">
-        Create
-        <input type="number" name="count" min="1" max="{{ lan_remaining }}" value="1" class="text-input text-input-sm gateway-create-count">
-      </label>
+      <input type="number" name="count" min="1" max="{{ lan_remaining }}" value="1" class="text-input text-input-sm gateway-create-count" aria-label="Number of gateways to create">
       <button type="submit" class="btn btn-glow btn-sm">Create</button>
     </form>
     {% endif %}
