@@ -223,6 +223,10 @@ body {
   min-width: 8.75rem;
 }
 
+.worker-head-actions .worker-create-gateway-form .btn {
+  width: 100%;
+}
+
 .peer-group-card-title-row {
   display: flex;
   align-items: center;

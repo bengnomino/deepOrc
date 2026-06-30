@@ -88,12 +88,13 @@
     <div class="worker-head-actions">
       {% if section.status.value == 'online' %}
       <button type="button" class="btn btn-glow btn-new-peer-group-worker" data-worker-id="{{ section.worker.id }}">Create group</button>
-      <a href="/orchestrator/ui/workers/{{ section.worker.id }}/create-gateway" class="btn btn-glow">
-        Create gateway
-      </a>
+      <form method="post" action="/orchestrator/ui/gateways/create" class="worker-create-gateway-form">
+        <input type="hidden" name="worker_id" value="{{ section.worker.id }}">
+        <button type="submit" class="btn btn-glow">Create gateway</button>
+      </form>
       {% else %}
-      <span class="btn btn-glow is-disabled" title="Worker offline">Create group</span>
-      <span class="btn btn-glow is-disabled" title="Worker offline">Create gateway</span>
+      <button type="button" class="btn btn-glow" disabled title="Worker offline">Create group</button>
+      <button type="button" class="btn btn-glow" disabled title="Worker offline">Create gateway</button>
       {% endif %}
     </div>
   </div>
