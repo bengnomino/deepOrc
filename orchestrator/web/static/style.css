@@ -704,19 +704,13 @@ a.peer-group-card-title:hover {
 .gateway-tile-footer {
   display: flex;
   align-items: stretch;
-  justify-content: space-between;
-  gap: 0.4rem;
-  padding: 0 0.55rem 0.55rem;
+  justify-content: flex-start;
   margin-top: auto;
 }
 
-.gateway-tile-restart-spacer {
-  flex: 1;
-}
-
 .gateway-tile-restart {
-  flex: 1;
-  max-width: calc(50% - 0.2rem);
+  flex: none;
+  width: fit-content;
   margin: 0;
   padding: 0.45rem 0.7rem;
   font-size: 0.78rem;
@@ -943,12 +937,9 @@ a.peer-group-card-title:hover {
 }
 
 .btn.gateway-tile-open {
-  flex: 1;
-  max-width: calc(50% - 0.2rem);
-  align-self: auto;
-  display: block;
-  width: auto;
-  margin: 0;
+  flex: none;
+  width: fit-content;
+  margin: 0 0 0 auto;
   padding: 0.75rem 1rem;
   border: 1px solid var(--border);
   border-radius: 10px 0 10px 0;

@@ -73,7 +73,7 @@
       {% endif %}
       {% if metrics %}
       <div><dt>Tailscale</dt><dd><span class="status-pill {% if metrics.tailscale_online %}online{% else %}offline{% endif %}">{% if metrics.tailscale_online %}online{% else %}offline{% endif %}</span></dd></div>
-      <div><dt>WireGuard</dt><dd><span class="status-pill {% if metrics.wg_online %}online{% else %}offline{% endif %}">{% if metrics.wg_online %}up{% else %}down{% endif %}</span></dd></div>
+      <div><dt>WG uplink</dt><dd><span class="status-pill {% if metrics.wg_online %}online{% else %}offline{% endif %}">{% if metrics.wg_online %}connected{% else %}offline{% endif %}</span></dd></div>
       {% endif %}
     </dl>
 

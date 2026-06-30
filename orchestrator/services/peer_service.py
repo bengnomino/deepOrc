@@ -1,5 +1,6 @@
 """Peer business logic — deepOrc: one WireGuard backhaul peer per gateway."""
 
+import subprocess
 from dataclasses import dataclass
 
 from sqlalchemy.orm import Session
@@ -87,6 +88,7 @@ class PeerService:
         self._peers.create(peer)
 
         agent.add_peer(keys.public_key, allowed_ips)
+        self._set_gateway_uplink_peer(gateway, keys.public_key)
 
         gs = GatewayService(self._session)
         endpoint = gs.get_endpoint(gateway)
@@ -102,6 +104,51 @@ class PeerService:
         )
         self._session.commit()
         return CreatePeerResult(peer=peer, client_conf=client_conf)
+
+    def resync_gateway_peers(self, gateway_id: int) -> int:
+        """Re-apply backhaul peer(s) on the gateway VM (e.g. after reboot)."""
+        gateway, agent = self._get_agent(gateway_id)
+        synced = 0
+        uplink_pubkey = ""
+        for peer in self._peers.list_by_gateway(gateway_id):
+            if peer.suspended:
+                continue
+            agent.add_peer(peer.public_key, BACKHAUL_GATEWAY_PEER_ALLOWED_IPS)
+            uplink_pubkey = peer.public_key
+            synced += 1
+        if uplink_pubkey:
+            self._set_gateway_uplink_peer(gateway, uplink_pubkey)
+        return synced
+
+    def _set_gateway_uplink_peer(self, gateway, public_key: str) -> None:
+        from orchestrator.incus.setup import push_file
+        from orchestrator.incus.target import incus_target
+
+        worker = gateway.worker
+        if not worker:
+            return
+        target = incus_target(worker, gateway.incus_instance)
+        env_path = "/opt/gateway-agent/exit.env"
+        result = subprocess.run(
+            ["incus", "exec", target, "--", "cat", env_path],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+        if result.returncode != 0:
+            return
+        lines = []
+        found = False
+        for line in result.stdout.splitlines():
+            if line.startswith("UPLINK_PEER="):
+                lines.append(f"UPLINK_PEER={public_key}")
+                found = True
+            else:
+                lines.append(line)
+        if not found:
+            lines.append(f"UPLINK_PEER={public_key}")
+        push_file(target, env_path, "\n".join(lines) + "\n", mode="0600")
 
     def ensure_backhaul_peer(self, gateway_id: int) -> CreatePeerResult | None:
         gateway = self._gateways.get_by_id(gateway_id)

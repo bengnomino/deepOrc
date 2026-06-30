@@ -252,6 +252,9 @@ class GatewayService:
         with client_ctx as client:
             restart_gateway_vm(client, gateway.incus_instance)
         apply_gateway_post_reboot(target)
+        from orchestrator.services.peer_service import PeerService
+
+        PeerService(self._session).resync_gateway_peers(gateway_id)
         return gateway
 
     def gateway_boot_status(self, gateway_id: int) -> dict[str, object]:

@@ -54,8 +54,6 @@
     <button type="button" class="gateway-tile-restart btn btn-ghost btn-restart-gateway"
             data-gateway-id="{{ row.gateway.id }}"
             data-gateway-name="{{ row.display_name }}">Restart</button>
-    {% else %}
-    <span class="gateway-tile-restart-spacer" aria-hidden="true"></span>
     {% endif %}
     <a href="/orchestrator/ui/gateways/{{ row.gateway.id }}" class="gateway-tile-open btn btn-glow">Open</a>
   </div>

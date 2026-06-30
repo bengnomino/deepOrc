@@ -2,8 +2,11 @@
 
 import subprocess
 from dataclasses import dataclass
+from datetime import UTC, datetime
 
-from gateway_agent.wg_handler import interface_up
+from gateway_agent.wg_handler import interface_up, list_peers
+
+PEER_HANDSHAKE_MAX_AGE_SECONDS = 180
 
 
 @dataclass
@@ -90,9 +93,25 @@ def fetch_egress_public_ip() -> str:
     raise RuntimeError(errors[-1] if errors else "egress ip lookup failed")
 
 
+def wg_uplink_online(interface: str = "wg0", max_age_seconds: int = PEER_HANDSHAKE_MAX_AGE_SECONDS) -> bool:
+    """True when the backhaul WG peer has a recent handshake."""
+    if not interface_up(interface):
+        return False
+    peers = list_peers(interface)
+    if not peers:
+        return False
+    now = datetime.now(UTC)
+    for peer in peers:
+        if peer.last_handshake is None:
+            continue
+        if (now - peer.last_handshake).total_seconds() < max_age_seconds:
+            return True
+    return False
+
+
 def collect_health(interface: str = "wg0") -> HealthStatus:
     return HealthStatus(
-        wg_online=interface_up(interface),
+        wg_online=wg_uplink_online(interface),
         tailscale_online=tailscale_online(),
         nft_running=nft_running(),
         exit_node_configured=exit_node_configured(),

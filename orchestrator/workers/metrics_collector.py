@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 from sqlalchemy.orm import Session
 
 from orchestrator.crypto import decrypt_value
+from orchestrator.headscale.client import PEER_ONLINE_HANDSHAKE_SECONDS
 from orchestrator.incus import IncusClient, get_vm_status
 from orchestrator.incus.target import incus_target
 from orchestrator.models.gateway import GatewayStatus
@@ -17,6 +18,7 @@ from orchestrator.repositories.peer_repo import PeerRepository
 from orchestrator.services.gateway_agent_client import GatewayAgentClient
 from orchestrator.services.ip_geo import lookup_geo
 from orchestrator.services.worker_service import WorkerService
+from orchestrator.services.peer_service import PeerService
 from orchestrator.workers.egress_metrics import (
     EgressSnapshot,
     egress_snapshot_from_metric,
@@ -26,6 +28,24 @@ from orchestrator.workers.egress_metrics import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _wg_uplink_online(peers, peer_stats: dict[str, dict]) -> bool:
+    if not peers:
+        return False
+    now = datetime.now(UTC)
+    for peer in peers:
+        if peer.suspended:
+            continue
+        stats = peer_stats.get(peer.public_key)
+        if not stats or not stats.get("last_handshake"):
+            continue
+        last = datetime.fromisoformat(stats["last_handshake"])
+        if last.tzinfo is None:
+            last = last.replace(tzinfo=UTC)
+        if (now - last).total_seconds() < PEER_ONLINE_HANDSHAKE_SECONDS:
+            return True
+    return False
 
 
 def _egress_geo_from_agent(
@@ -121,11 +141,20 @@ def collect_metrics(session: Session) -> int:
                 agent = GatewayAgentClient(gateway.vm_ip, token, incus_instance=target)
                 health = agent.health()
                 tailscale_online = health.get("tailscale_online")
-                wg_online = health.get("wg_online")
                 exit_node_reachable = health.get("exit_node_configured")
 
                 peer_stats = {p["public_key"]: p for p in agent.list_peers()}
-                for peer in peers_repo.list_by_gateway(gateway.id):
+                db_peers = peers_repo.list_by_gateway(gateway.id)
+                active_peers = [peer for peer in db_peers if not peer.suspended]
+                if active_peers and any(
+                    peer.public_key not in peer_stats for peer in active_peers
+                ):
+                    PeerService(session).resync_gateway_peers(gateway.id)
+                    peer_stats = {p["public_key"]: p for p in agent.list_peers()}
+
+                wg_online = _wg_uplink_online(active_peers, peer_stats)
+
+                for peer in db_peers:
                     stats = peer_stats.get(peer.public_key)
                     if stats:
                         last_hs = None
