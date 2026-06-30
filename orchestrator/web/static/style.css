@@ -219,6 +219,55 @@ body {
   flex-shrink: 0;
 }
 
+.worker-head-actions .btn {
+  min-width: 8.75rem;
+}
+
+.peer-group-card-title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  min-width: 0;
+}
+
+.peer-group-card-title-row .peer-group-card-title {
+  min-width: 0;
+}
+
+.gateway-name-row {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  min-width: 0;
+  flex: 1;
+}
+
+.gateway-name-row .gateway-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.btn-edit {
+  padding: 0.28rem 0.35rem;
+  min-width: auto;
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted);
+  flex-shrink: 0;
+}
+
+.btn-edit:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.06);
+  border-color: var(--border);
+}
+
+.icon-edit {
+  display: block;
+}
+
 .worker-peer-groups {
   display: flex;
   flex-direction: column;
@@ -265,11 +314,6 @@ a.peer-group-card-title:hover {
 
 .peer-group-card-meta code {
   font-size: 0.76rem;
-}
-
-.peer-group-card-count {
-  font-size: 0.78rem;
-  flex-shrink: 0;
 }
 
 .peer-group-card-empty {

@@ -120,3 +120,20 @@ class PeerGroupService:
             )
         self._groups.delete(group)
         self._session.commit()
+
+    def rename_group(self, group_id: int, name: str) -> PeerGroup:
+        new_name = name.strip()
+        if not new_name:
+            raise ValueError("Group name is required")
+        group = self._groups.get_by_id(group_id)
+        if not group:
+            raise ValueError(f"Peer group {group_id} not found")
+        if new_name == group.name:
+            return group
+        existing = self._groups.get_by_name(new_name)
+        if existing:
+            raise ValueError(f"Peer group {new_name} already exists")
+        group.name = new_name
+        self._session.flush()
+        self._session.commit()
+        return group

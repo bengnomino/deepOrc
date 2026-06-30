@@ -1,11 +1,18 @@
 <article class="gateway-tile gateway-tile-compact{% if row.gateway.status.value == 'deleting' %} gateway-tile-deleting{% endif %}">
   <div class="gateway-tile-body">
     <div class="gateway-tile-top">
-      {% if row.gateway.status.value == 'deleting' %}
-      <span class="gateway-name">{{ row.display_name }}</span>
-      {% else %}
-      <a href="/orchestrator/ui/gateways/{{ row.gateway.id }}" class="gateway-name">{{ row.display_name }}</a>
-      {% endif %}
+      <div class="gateway-name-row">
+        {% if row.gateway.status.value == 'deleting' %}
+        <span class="gateway-name">{{ row.display_name }}</span>
+        {% else %}
+        <a href="/orchestrator/ui/gateways/{{ row.gateway.id }}" class="gateway-name">{{ row.display_name }}</a>
+        {% if row.gateway.status.value == 'ready' %}
+        <button type="button" class="btn btn-icon btn-edit btn-rename-gateway"
+                data-gateway-id="{{ row.gateway.id }}" data-gateway-name="{{ row.display_name }}"
+                aria-label="Rename {{ row.display_name }}">{% include "_icon_edit.html" %}</button>
+        {% endif %}
+        {% endif %}
+      </div>
       <span class="status-pill status-{{ row.gateway.status.value }}">
         {% if row.gateway.status.value == 'deleting' %}deleting{% else %}{{ row.gateway.status.value }}{% endif %}
       </span>

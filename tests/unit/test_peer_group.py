@@ -119,3 +119,17 @@ def test_create_group_defaults_subnet(session: Session):
     )
     assert group.lan_subnet == "192.168.13.0/24"
     assert group.lan_gateway == "192.168.13.254"
+
+
+def test_rename_peer_group(session: Session):
+    service = PeerGroupService(session)
+    worker = session.query(Worker).one()
+    group = service.create_group(
+        CreatePeerGroupRequest(
+            name="deeper-a",
+            worker_id=worker.id,
+            lan_start_ip="192.168.13.100",
+        )
+    )
+    renamed = service.rename_group(group.id, "deeper-b")
+    assert renamed.name == "deeper-b"

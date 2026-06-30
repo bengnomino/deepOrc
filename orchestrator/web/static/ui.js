@@ -427,4 +427,38 @@
     btn.addEventListener("click", () => openPeerGroup(btn.dataset.workerId));
   });
   wireDialogClose(peerGroupModal, document.getElementById("peer-group-modal-close"));
+
+  const renamePeerGroupModal = document.getElementById("rename-peer-group-modal");
+  const renamePeerGroupForm = document.getElementById("rename-peer-group-form");
+  const renamePeerGroupInput = document.getElementById("rename-peer-group-input");
+  document.querySelectorAll(".btn-rename-peer-group").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const groupId = btn.dataset.groupId;
+      if (!renamePeerGroupForm || !renamePeerGroupInput || !groupId) return;
+      renamePeerGroupForm.action = `/orchestrator/ui/peer-groups/${groupId}/rename`;
+      renamePeerGroupInput.value = btn.dataset.groupName || "";
+      renamePeerGroupModal?.showModal();
+      renamePeerGroupInput.focus();
+      renamePeerGroupInput.select();
+    });
+  });
+  wireDialogClose(renamePeerGroupModal, document.getElementById("rename-peer-group-close"));
+
+  const renameGatewayModal = document.getElementById("rename-gateway-modal");
+  const renameGatewayForm = document.getElementById("rename-gateway-form");
+  const renameGatewayInput = document.getElementById("rename-gateway-input");
+  document.querySelectorAll(".btn-rename-gateway").forEach((btn) => {
+    btn.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const gatewayId = btn.dataset.gatewayId;
+      if (!renameGatewayForm || !renameGatewayInput || !gatewayId) return;
+      renameGatewayForm.action = `/orchestrator/ui/gateways/${gatewayId}/tailscale-name`;
+      renameGatewayInput.value = btn.dataset.gatewayName || "";
+      renameGatewayModal?.showModal();
+      renameGatewayInput.focus();
+      renameGatewayInput.select();
+    });
+  });
+  wireDialogClose(renameGatewayModal, document.getElementById("rename-gateway-close"));
 })();

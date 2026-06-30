@@ -10,11 +10,15 @@
       <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/></svg>
       New gateway
     </button>
-    <button type="button" class="btn btn-ghost" id="btn-new-peer-group">Peer group</button>
+    <button type="button" class="btn btn-ghost" id="btn-new-peer-group">Create group</button>
     <button type="button" class="btn btn-ghost" id="btn-add-worker">Add worker</button>
     <button type="button" class="btn btn-ghost" id="btn-add-exit-node">Mobile client</button>
   </div>
 </header>
+
+{% if flash_ok %}
+<div class="alert success">{{ flash_ok }}</div>
+{% endif %}
 
 {% if flash_error %}
 <div class="alert error">{{ flash_error }}</div>
@@ -83,12 +87,12 @@
     </h2>
     <div class="worker-head-actions">
       {% if section.status.value == 'online' %}
-      <button type="button" class="btn btn-ghost btn-new-peer-group-worker" data-worker-id="{{ section.worker.id }}">Peer group</button>
+      <button type="button" class="btn btn-glow btn-new-peer-group-worker" data-worker-id="{{ section.worker.id }}">Create group</button>
       <a href="/orchestrator/ui/workers/{{ section.worker.id }}/create-gateway" class="btn btn-glow">
         Create gateway
       </a>
       {% else %}
-      <span class="btn btn-ghost is-disabled" title="Worker offline">Peer group</span>
+      <span class="btn btn-glow is-disabled" title="Worker offline">Create group</span>
       <span class="btn btn-glow is-disabled" title="Worker offline">Create gateway</span>
       {% endif %}
     </div>
@@ -123,10 +127,17 @@
     <article class="peer-group-card">
       <div class="peer-group-card-head">
         <div class="peer-group-card-title-wrap">
-          <a href="/orchestrator/ui/peer-groups/{{ pg.group.id }}" class="peer-group-card-title">{{ pg.group.name }}</a>
-          <span class="peer-group-card-meta muted">from <code>{{ pg.group.lan_start_ip }}</code></span>
+          <div class="peer-group-card-title-row">
+            <a href="/orchestrator/ui/peer-groups/{{ pg.group.id }}" class="peer-group-card-title">{{ pg.group.name }}</a>
+            <button type="button" class="btn btn-icon btn-edit btn-rename-peer-group"
+                    data-group-id="{{ pg.group.id }}" data-group-name="{{ pg.group.name }}"
+                    aria-label="Rename {{ pg.group.name }}">{% include "_icon_edit.html" %}</button>
+          </div>
+          <span class="peer-group-card-meta muted">
+            from <code>{{ pg.group.lan_start_ip }}</code>
+            · {{ pg.gateways|length }} gateway{% if pg.gateways|length != 1 %}s{% endif %}
+          </span>
         </div>
-        <span class="peer-group-card-count muted">{{ pg.gateways|length }} gateway{% if pg.gateways|length != 1 %}s{% endif %}</span>
       </div>
       {% if pg.gateways %}
       <div class="gateway-grid gateway-grid-compact">
@@ -214,6 +225,41 @@
     </label>
     <div class="modal-actions">
       <button type="submit" class="btn btn-glow">Create group</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="rename-peer-group-modal" class="modal">
+  <form method="post" class="modal-card" id="rename-peer-group-form">
+    <div class="modal-header">
+      <h2>Rename peer group</h2>
+      <button type="button" class="btn btn-icon modal-close" id="rename-peer-group-close" aria-label="Close">✕</button>
+    </div>
+    <label class="field-label">
+      Name
+      <input type="text" name="name" id="rename-peer-group-input" class="text-input" required>
+    </label>
+    <div class="modal-actions">
+      <button type="submit" class="btn btn-glow">Save</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="rename-gateway-modal" class="modal">
+  <form method="post" class="modal-card" id="rename-gateway-form">
+    <input type="hidden" name="redirect_to" value="/orchestrator/ui">
+    <div class="modal-header">
+      <h2>Rename gateway</h2>
+      <button type="button" class="btn btn-icon modal-close" id="rename-gateway-close" aria-label="Close">✕</button>
+    </div>
+    <label class="field-label">
+      Headscale name
+      <input type="text" name="tailscale_hostname" id="rename-gateway-input" class="text-input" required
+             pattern="[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?"
+             title="Letters, digits, and hyphens">
+    </label>
+    <div class="modal-actions">
+      <button type="submit" class="btn btn-glow">Save</button>
     </div>
   </form>
 </dialog>

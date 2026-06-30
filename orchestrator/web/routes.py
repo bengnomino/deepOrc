@@ -220,7 +220,9 @@ def _pending_registrations(session: DbSession) -> list:
 
 
 @router.get("", response_class=HTMLResponse)
-def dashboard(request: Request, session: DbSession, error: str | None = None) -> HTMLResponse:
+def dashboard(
+    request: Request, session: DbSession, error: str | None = None, ok: str | None = None
+) -> HTMLResponse:
     workers, unassigned, headscale_error = _dashboard_workers(session)
     pending_regs = _pending_registrations(session)
     settings = get_settings()
@@ -235,6 +237,7 @@ def dashboard(request: Request, session: DbSession, error: str | None = None) ->
             "pending_registrations": pending_regs,
             "headscale_error": headscale_error,
             "flash_error": error,
+            "flash_ok": ok,
             "exit_node_tag": settings.headscale_exit_node_tag,
             "login_server": settings.headscale_url,
             "title": "Dashboard",
@@ -312,8 +315,31 @@ def create_peer_group_ui(
                 parent_iface=parent_iface.strip() or None,
             )
         )
-        return RedirectResponse(url=f"/orchestrator/ui/peer-groups/{group.id}", status_code=303)
+        return RedirectResponse(
+            url=f"/orchestrator/ui/peer-groups/{group.id}", status_code=303
+        )
     except ValueError as exc:
+        return RedirectResponse(
+            url=f"/orchestrator/ui?error={quote(str(exc))}",
+            status_code=303,
+        )
+
+
+@router.post("/peer-groups/{group_id}/rename")
+def rename_peer_group_ui(
+    group_id: int,
+    session: DbSession,
+    name: str = Form(...),
+) -> RedirectResponse:
+    service = PeerGroupService(session)
+    try:
+        service.rename_group(group_id, name)
+        return RedirectResponse(
+            url=f"/orchestrator/ui?ok={quote('Peer group renamed')}",
+            status_code=303,
+        )
+    except ValueError as exc:
+        session.rollback()
         return RedirectResponse(
             url=f"/orchestrator/ui?error={quote(str(exc))}",
             status_code=303,
@@ -614,20 +640,23 @@ def rename_gateway_tailscale_ui(
     gateway_id: int,
     session: DbSession,
     tailscale_hostname: str = Form(...),
+    redirect_to: str = Form(""),
 ) -> RedirectResponse:
     service = GatewayService(session)
     try:
         service.rename_tailscale_display_name(gateway_id, tailscale_hostname.strip())
-        return RedirectResponse(
-            url=_gateway_detail_url(gateway_id, ok="Headscale name updated"),
-            status_code=303,
-        )
+        if redirect_to.startswith("/orchestrator/ui") and "://" not in redirect_to:
+            url = f"{redirect_to}?ok={quote('Gateway renamed')}"
+        else:
+            url = _gateway_detail_url(gateway_id, ok="Headscale name updated")
+        return RedirectResponse(url=url, status_code=303)
     except ValueError as exc:
         session.rollback()
-        return RedirectResponse(
-            url=_gateway_detail_url(gateway_id, error=str(exc)),
-            status_code=303,
-        )
+        if redirect_to.startswith("/orchestrator/ui") and "://" not in redirect_to:
+            url = f"{redirect_to}?error={quote(str(exc))}"
+        else:
+            url = _gateway_detail_url(gateway_id, error=str(exc))
+        return RedirectResponse(url=url, status_code=303)
 
 
 @router.post("/gateways/{gateway_id}/peers")
