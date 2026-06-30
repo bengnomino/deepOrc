@@ -4,6 +4,7 @@ import base64
 
 from orchestrator.host_setup.script import (
     _valid_wg_conf,
+    render_exit_host_auto_cleanup_script,
     render_exit_host_script,
     wg_interface_name,
 )
@@ -99,3 +100,11 @@ def test_render_skips_not_ready_gateway():
     script = render_exit_host_script(group, [(gateway, None)])
     assert "skip WireGuard: gw-009" in script
     assert "wg-quick up" not in script
+
+
+def test_render_exit_host_auto_cleanup_script():
+    script = render_exit_host_auto_cleanup_script()
+    assert "#!/usr/bin/env bash" in script
+    assert "wg-gw" in script
+    assert "mac_" in script
+    assert "--dry-run" in script

@@ -340,6 +340,17 @@ def download_peer_group_host_setup(group_id: int, session: DbSession) -> PlainTe
     )
 
 
+@router.get("/exit-host-cleanup.sh", response_class=PlainTextResponse)
+def download_exit_host_cleanup() -> PlainTextResponse:
+    from orchestrator.host_setup.script import render_exit_host_auto_cleanup_script
+
+    return PlainTextResponse(
+        render_exit_host_auto_cleanup_script(),
+        media_type="text/x-shellscript",
+        headers={"Content-Disposition": 'attachment; filename="exit-host-cleanup.sh"'},
+    )
+
+
 @router.post("/peer-groups/{group_id}/gateways")
 def create_group_gateways_ui(
     group_id: int,

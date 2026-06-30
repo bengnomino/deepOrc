@@ -7,6 +7,7 @@
     <h1>{{ group.name }}</h1>
   </div>
   <div class="header-actions">
+    <a href="/orchestrator/ui/exit-host-cleanup.sh" class="btn btn-ghost">Cleanup script</a>
     {% if gateways %}
     <button type="button" class="btn btn-glow" id="btn-host-setup">Exit host script</button>
     <a href="/orchestrator/ui/peer-groups/{{ group.id }}/host-setup.sh" class="btn btn-ghost">Download .sh</a>

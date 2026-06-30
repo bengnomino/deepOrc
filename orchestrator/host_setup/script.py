@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import ipaddress
 import re
+from pathlib import Path
 
 from orchestrator.lan.ipam import default_lan_gateway
 from orchestrator.models.gateway import Gateway, GatewayStatus
@@ -12,6 +13,12 @@ from orchestrator.models.peer_group import PeerGroup
 from orchestrator.wg.config import BACKHAUL_WG_MTU
 
 _IFACE_SAFE = re.compile(r"[^a-zA-Z0-9]")
+_CLEANUP_SCRIPT = Path(__file__).resolve().parent / "exit_host_cleanup.sh"
+
+
+def render_exit_host_auto_cleanup_script() -> str:
+    """Bash script that discovers and removes all deepOrc exit-host plumbing."""
+    return _CLEANUP_SCRIPT.read_text(encoding="utf-8")
 
 
 def wg_interface_name(gateway_name: str) -> str:
