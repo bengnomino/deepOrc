@@ -21,7 +21,7 @@
       <div class="gateway-metric">
         <div class="gateway-metric-head">
           <span class="gateway-metric-label">WG UPLINK</span>
-          <span class="metric-dot{% if row.wg_online %} on{% endif %}" title="WireGuard"></span>
+          <span class="metric-dot{% if row.wg_online %} on{% endif %}" title="WG backhaul connected"></span>
         </div>
         {% if row.wg_gateway_ip %}
         <code class="gateway-metric-ip">{{ row.wg_gateway_ip }}</code>
@@ -32,7 +32,7 @@
       <div class="gateway-metric">
         <div class="gateway-metric-head">
           <span class="gateway-metric-label">TS NODE</span>
-          <span class="metric-dot{% if row.tailscale_online %} on{% endif %}" title="Tailscale"></span>
+          <span class="metric-dot{% if row.tailscale_online %} on{% endif %}" title="Tailscale connected"></span>
         </div>
         {% if row.gateway.exit_node_id != 'pending' %}
         <code class="gateway-metric-ip">{{ row.gateway.exit_node_id }}</code>
@@ -41,10 +41,14 @@
         {% endif %}
       </div>
     </div>
-    {% if row.egress_public_ip %}
-    <div class="gateway-egress" title="{{ row.egress_country_code or 'unknown country' }}">
+    {% if row.gateway.status.value == 'ready' %}
+    <div class="gateway-egress"{% if row.pathways_online and row.egress_public_ip %} title="{{ row.egress_country_code or 'unknown country' }}"{% endif %}>
+      {% if row.pathways_online and row.egress_public_ip %}
       {% if row.egress_flag %}<span class="gateway-egress-flag" aria-hidden="true">{{ row.egress_flag }}</span>{% endif %}
       <code class="gateway-egress-ip">{{ row.egress_public_ip }}</code>
+      {% else %}
+      <span class="gateway-egress-offline">OFFLINE</span>
+      {% endif %}
     </div>
     {% endif %}
   </div>

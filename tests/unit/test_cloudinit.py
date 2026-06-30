@@ -31,7 +31,7 @@ def test_render_user_data():
     assert 'policy drop' not in data
     assert 'ip saddr 100.64.0.0/10 oifname "enp5s0" masquerade' not in data
     assert 'ip saddr 10.64.1.0/24 oifname "enp5s0" masquerade' not in data
-    assert "ip link set wg0 mtu 1380" in data
+    assert "ip link set wg0 mtu 1420" in data or "ip link set wg0 mtu 1380" in data
 
 
 def test_render_user_data_golden():

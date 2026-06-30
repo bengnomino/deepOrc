@@ -8,7 +8,6 @@ from datetime import UTC, datetime
 from sqlalchemy.orm import Session
 
 from orchestrator.crypto import decrypt_value
-from orchestrator.headscale.client import PEER_ONLINE_HANDSHAKE_SECONDS
 from orchestrator.incus import IncusClient, get_vm_status
 from orchestrator.incus.target import incus_target
 from orchestrator.models.gateway import GatewayStatus
@@ -16,6 +15,7 @@ from orchestrator.repositories.gateway_repo import GatewayRepository
 from orchestrator.repositories.metrics_repo import MetricsRepository
 from orchestrator.repositories.peer_repo import PeerRepository
 from orchestrator.services.gateway_agent_client import GatewayAgentClient
+from orchestrator.services.gateway_connectivity import wg_uplink_connected
 from orchestrator.services.ip_geo import lookup_geo
 from orchestrator.services.worker_service import WorkerService
 from orchestrator.services.peer_service import PeerService
@@ -24,28 +24,11 @@ from orchestrator.workers.egress_metrics import (
     egress_snapshot_from_metric,
     interface_state,
     merge_egress,
+    pathways_ready,
     should_refresh_egress,
 )
 
 logger = logging.getLogger(__name__)
-
-
-def _wg_uplink_online(peers, peer_stats: dict[str, dict]) -> bool:
-    if not peers:
-        return False
-    now = datetime.now(UTC)
-    for peer in peers:
-        if peer.suspended:
-            continue
-        stats = peer_stats.get(peer.public_key)
-        if not stats or not stats.get("last_handshake"):
-            continue
-        last = datetime.fromisoformat(stats["last_handshake"])
-        if last.tzinfo is None:
-            last = last.replace(tzinfo=UTC)
-        if (now - last).total_seconds() < PEER_ONLINE_HANDSHAKE_SECONDS:
-            return True
-    return False
 
 
 def _egress_geo_from_agent(
@@ -131,8 +114,8 @@ def collect_metrics(session: Session) -> int:
             if not snapshot.public_ip:
                 snapshot = egress_snapshot_from_metric(latest)
 
-            tailscale_online = latest.tailscale_online if latest else None
-            wg_online = latest.wg_online if latest else None
+            tailscale_online = None
+            wg_online = None
             exit_node_reachable = latest.exit_node_reachable if latest else None
 
             try:
@@ -140,7 +123,6 @@ def collect_metrics(session: Session) -> int:
                 target = incus_target(worker, gateway.incus_instance)
                 agent = GatewayAgentClient(gateway.vm_ip, token, incus_instance=target)
                 health = agent.health()
-                tailscale_online = health.get("tailscale_online")
                 exit_node_reachable = health.get("exit_node_configured")
 
                 peer_stats = {p["public_key"]: p for p in agent.list_peers()}
@@ -152,7 +134,8 @@ def collect_metrics(session: Session) -> int:
                     PeerService(session).resync_gateway_peers(gateway.id)
                     peer_stats = {p["public_key"]: p for p in agent.list_peers()}
 
-                wg_online = _wg_uplink_online(active_peers, peer_stats)
+                wg_online = wg_uplink_connected(peer_stats)
+                tailscale_online = agent.tailscale_connected()
 
                 for peer in db_peers:
                     stats = peer_stats.get(peer.public_key)
@@ -178,6 +161,15 @@ def collect_metrics(session: Session) -> int:
                 )
             except Exception as exc:
                 logger.warning("Agent metrics failed for %s: %s", gateway.name, exc)
+                if vm_status == "Running":
+                    tailscale_online = False
+                    wg_online = False
+
+            current_state = interface_state(
+                tailscale_online, wg_online, exit_node_reachable
+            )
+            if not pathways_ready(current_state):
+                snapshot = EgressSnapshot(None, None, None)
 
             metrics_repo.add_gateway_metric(
                 gateway.id,

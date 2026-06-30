@@ -4,7 +4,7 @@ import subprocess
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
-from gateway_agent.wg_handler import interface_up, list_peers
+from gateway_agent.wg_handler import list_peers
 
 PEER_HANDSHAKE_MAX_AGE_SECONDS = 180
 
@@ -17,14 +17,30 @@ class HealthStatus:
     exit_node_configured: bool
 
 
-def tailscale_online() -> bool:
+def tailscale_connected() -> bool:
+    """True when logged into Headscale with a tailnet IP (not just tailscaled running)."""
+    import json
+
     result = subprocess.run(
         ["tailscale", "status", "--json"],
         capture_output=True,
         text=True,
         check=False,
     )
-    return result.returncode == 0 and '"Online": true' in result.stdout
+    if result.returncode != 0:
+        return False
+    try:
+        data = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        return False
+    if data.get("BackendState") != "Running":
+        return False
+    ips = (data.get("Self") or {}).get("TailscaleIPs") or []
+    return any("." in str(ip) for ip in ips)
+
+
+def tailscale_online() -> bool:
+    return tailscale_connected()
 
 
 def tailscale_status_text() -> str:
@@ -95,8 +111,6 @@ def fetch_egress_public_ip() -> str:
 
 def wg_uplink_online(interface: str = "wg0", max_age_seconds: int = PEER_HANDSHAKE_MAX_AGE_SECONDS) -> bool:
     """True when the backhaul WG peer has a recent handshake."""
-    if not interface_up(interface):
-        return False
     peers = list_peers(interface)
     if not peers:
         return False
@@ -112,7 +126,7 @@ def wg_uplink_online(interface: str = "wg0", max_age_seconds: int = PEER_HANDSHA
 def collect_health(interface: str = "wg0") -> HealthStatus:
     return HealthStatus(
         wg_online=wg_uplink_online(interface),
-        tailscale_online=tailscale_online(),
+        tailscale_online=tailscale_connected(),
         nft_running=nft_running(),
         exit_node_configured=exit_node_configured(),
     )

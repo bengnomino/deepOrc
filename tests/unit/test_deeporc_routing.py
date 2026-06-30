@@ -29,7 +29,7 @@ def test_openwrt_setup_installs_procd_routing():
         wg_gateway_ip="10.64.34.1",
         wg_listen_port=52017,
         wg_private_key="x" * 44,
-        wg_mtu=1380,
+        wg_mtu=1420,
         exit_mtu=1420,
         agent_token="token",
         agent_port=8081,

@@ -65,7 +65,19 @@ def apply_gateway_post_reboot(instance_target: str, *, boot_timeout: int = 120) 
     )
     push_file(
         instance_target,
+        "/opt/gateway-agent/tailscale-daemon.init",
+        (_FRAGMENTS / "tailscale.init").read_text(encoding="utf-8"),
+        mode="0755",
+    )
+    push_file(
+        instance_target,
         "/etc/init.d/tailscale",
+        (_FRAGMENTS / "tailscale.init").read_text(encoding="utf-8"),
+        mode="0755",
+    )
+    push_file(
+        instance_target,
+        "/etc/init.d/tailscale-up",
         (_OPENWRT / "tailscale-up.init").read_text(encoding="utf-8"),
         mode="0755",
     )
@@ -75,22 +87,15 @@ def apply_gateway_post_reboot(instance_target: str, *, boot_timeout: int = 120) 
             break
         time.sleep(2)
 
-    bootstrap = _incus_exec(
-        instance_target,
-        "/opt/gateway-agent/deeporc-routing.sh",
-        "bootstrap",
-        timeout=30,
-    )
-    if bootstrap.returncode != 0:
-        detail = (bootstrap.stderr or bootstrap.stdout or "routing bootstrap failed").strip()
-        raise RuntimeError(detail)
-
     _incus_exec(
         instance_target,
         "sh",
         "-c",
-        "/etc/init.d/tailscale start >/tmp/deeporc-tailscale-up.log 2>&1 &",
-        timeout=15,
+        (
+            "/etc/init.d/tailscale start >/tmp/deeporc-tailscale-up.log 2>&1; "
+            "/etc/init.d/tailscale-up start >>/tmp/deeporc-tailscale-up.log 2>&1"
+        ),
+        timeout=90,
     )
     _wait_for_tailscale(instance_target)
 

@@ -187,12 +187,6 @@ _apply_main_table() {
 	ip route replace "$WG_SUBNET" dev "$UPLINK_IF" table main 2>/dev/null || true
 	ip route replace "$TAILNET" dev "$TS_IF" table main 2>/dev/null || true
 	ip route replace "$MAGICDNS" dev "$TS_IF" scope link table main 2>/dev/null || true
-	# Exit-client DNS to public resolvers bypasses wg0 (HTTP to other IPs still uses default).
-	if [ -n "$gw" ]; then
-		for dns in $PUBLIC_DNS; do
-			ip route replace "$dns/32" via "$gw" dev "$HOST_IF" table main 2>/dev/null || true
-		done
-	fi
 }
 
 _apply_policy_rules() {

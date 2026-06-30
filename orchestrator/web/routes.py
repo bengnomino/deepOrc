@@ -41,6 +41,7 @@ from orchestrator.web.views import (
 )
 from orchestrator.web.templating import templates
 from orchestrator.lan.ipam import remaining_lan_capacity
+from orchestrator.workers.egress_metrics import interface_state, pathways_ready
 from orchestrator.workers.provisioning import schedule_provisioning_after_request
 
 logger = logging.getLogger(__name__)
@@ -119,14 +120,26 @@ def _gateway_row(
             wg_gateway_ip = str(ipaddress.ip_network(gateway.wg_subnet).network_address + 1)
         except ValueError:
             wg_gateway_ip = None
+    pathways_online = (
+        pathways_ready(
+            interface_state(
+                metric.tailscale_online if metric else None,
+                metric.wg_online if metric else None,
+                metric.exit_node_reachable if metric else None,
+            )
+        )
+        if metric
+        else False
+    )
     egress_public_ip = None
     egress_country_code = None
-    if metric and metric.egress_public_ip:
-        egress_public_ip = metric.egress_public_ip
-        egress_country_code = metric.egress_country_code
-    elif egress_metric:
-        egress_public_ip = egress_metric.egress_public_ip
-        egress_country_code = egress_metric.egress_country_code
+    if pathways_online:
+        if metric and metric.egress_public_ip:
+            egress_public_ip = metric.egress_public_ip
+            egress_country_code = metric.egress_country_code
+        elif egress_metric:
+            egress_public_ip = egress_metric.egress_public_ip
+            egress_country_code = egress_metric.egress_country_code
     return {
         "gateway": gateway,
         "display_name": gateway_headscale_display_name(gateway, exit_node),
@@ -134,6 +147,7 @@ def _gateway_row(
         "wg_gateway_ip": wg_gateway_ip,
         "tailscale_online": metric.tailscale_online if metric else None,
         "wg_online": metric.wg_online if metric else None,
+        "pathways_online": pathways_online,
         "exit_node": exit_node,
         "peer_total": len(peers),
         "peer_online": peer_online,

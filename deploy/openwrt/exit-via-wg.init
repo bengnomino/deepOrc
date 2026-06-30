@@ -10,11 +10,10 @@ start() {
 	done
 	ip link show wg0 >/dev/null 2>&1 || return 1
 
-	for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30; do
-		tailscale status --json 2>/dev/null | grep -q '"BackendState": "Running"' && break
-		sleep 2
+	for i in 1 2 3 4 5 6 7 8 9 10; do
+		ip link show tailscale0 >/dev/null 2>&1 && break
+		sleep 1
 	done
-	tailscale status --json 2>/dev/null | grep -q '"BackendState": "Running"' || return 1
 
 	[ -x /opt/gateway-agent/exit-via-wg.sh ] || return 1
 	/opt/gateway-agent/exit-via-wg.sh

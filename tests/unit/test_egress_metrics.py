@@ -7,6 +7,7 @@ from orchestrator.workers.egress_metrics import (
     EgressSnapshot,
     interface_state,
     merge_egress,
+    pathways_ready,
     should_refresh_egress,
 )
 
@@ -74,3 +75,10 @@ def test_should_retry_missing_egress_after_cooldown():
         snapshot=snapshot,
         now=now,
     )
+
+
+def test_pathways_not_ready_when_wg_or_ts_down():
+    assert pathways_ready(interface_state(True, True, None)) is True
+    assert pathways_ready(interface_state(False, True, None)) is False
+    assert pathways_ready(interface_state(True, False, None)) is False
+    assert pathways_ready(interface_state(None, True, None)) is False

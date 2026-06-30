@@ -98,6 +98,8 @@ if [ -f "$SCRIPT_DIR/openwrt/packages/ethtool_6.11-r1_x86_64.ipk" ]; then
 fi
 incus_push "$SCRIPT_DIR/openwrt/gateway-agent.init" /etc/init.d/gateway-agent
 incus_push "$SCRIPT_DIR/openwrt/gateway-wg.init" /etc/init.d/gateway-wg
+incus_push "$SCRIPT_DIR/openwrt/tailscale.init" /etc/init.d/tailscale
+incus_push "$SCRIPT_DIR/openwrt/tailscale.init" /opt/gateway-agent/tailscale-daemon.init
 incus_push "$SCRIPT_DIR/openwrt/tailscale-up.init" /etc/init.d/tailscale-up
 incus_push "$SCRIPT_DIR/openwrt/deeporc-routing.init" /etc/init.d/deeporc-routing
 incus_exec mkdir -p /etc/hotplug.d/iface

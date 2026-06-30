@@ -8,6 +8,7 @@ from urllib.parse import urlencode
 import httpx
 
 from orchestrator.config import get_settings
+from orchestrator.services.gateway_connectivity import tailscale_connected_from_status_json
 
 
 class GatewayAgentClient:
@@ -101,6 +102,31 @@ class GatewayAgentClient:
 
     def health(self) -> dict[str, Any]:
         return self._request("GET", "/v1/health")
+
+    def tailscale_connected(self) -> bool:
+        if self._incus_instance:
+            return self._tailscale_connected_via_incus()
+        try:
+            return bool(self.health().get("tailscale_online"))
+        except Exception:
+            return False
+
+    def _tailscale_connected_via_incus(self) -> bool:
+        if not self._incus_instance:
+            return False
+        cmd = [
+            "incus",
+            "exec",
+            self._incus_instance,
+            "--",
+            "/usr/sbin/tailscale",
+            "status",
+            "--json",
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30, check=False)
+        if result.returncode != 0:
+            return False
+        return tailscale_connected_from_status_json(result.stdout)
 
     def tailscale_status(self) -> dict[str, Any]:
         last_err: Exception | None = None

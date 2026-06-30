@@ -30,6 +30,7 @@ from orchestrator.models.worker import Worker
 from orchestrator.repositories.gateway_repo import GatewayRepository
 from orchestrator.repositories.job_repo import JobRepository
 from orchestrator.services.gateway_agent_client import GatewayAgentClient
+from orchestrator.services.gateway_connectivity import wg_uplink_connected
 from orchestrator.services.worker_service import WorkerService
 from orchestrator.naming import GATEWAY_PREFIX, collect_gateway_names, next_sequential_name
 from orchestrator.wg import allocate_wg_subnet, generate_keypair
@@ -278,9 +279,10 @@ class GatewayService:
         if gateway.status == GatewayStatus.READY and vm_status == "Running":
             try:
                 token = decrypt_value(gateway.agent_token_enc)
-                health = self._agent_client(gateway, token).health()
-                tailscale_online = bool(health.get("tailscale_online"))
-                wg_online = bool(health.get("wg_online"))
+                agent = self._agent_client(gateway, token)
+                tailscale_online = agent.tailscale_connected()
+                peer_stats = {p["public_key"]: p for p in agent.list_peers()}
+                wg_online = wg_uplink_connected(peer_stats)
             except Exception as exc:
                 logger.debug("Agent health for gateway %s failed: %s", gateway.name, exc)
 

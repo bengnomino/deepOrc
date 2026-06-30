@@ -8,6 +8,12 @@ from datetime import UTC, datetime
 EGRESS_REFRESH_SECONDS = 300
 
 
+def _utc(dt: datetime) -> datetime:
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=UTC)
+    return dt.astimezone(UTC)
+
+
 @dataclass(frozen=True)
 class InterfaceState:
     tailscale_online: bool | None
@@ -62,7 +68,7 @@ def should_refresh_egress(
         return False
     if snapshot.updated_at is None:
         return True
-    age = (now - snapshot.updated_at).total_seconds()
+    age = (now - _utc(snapshot.updated_at)).total_seconds()
     if age < EGRESS_REFRESH_SECONDS:
         return False
     if not snapshot.public_ip:

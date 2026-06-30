@@ -695,6 +695,13 @@ a.peer-group-card-title:hover {
   word-break: break-all;
 }
 
+.gateway-egress-offline {
+  font-size: 0.74rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
 .gateway-tile-compact .gateway-tile-open {
   padding: 0.45rem 0.7rem;
   font-size: 0.78rem;
