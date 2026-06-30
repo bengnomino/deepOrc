@@ -253,37 +253,6 @@ body {
   white-space: nowrap;
 }
 
-.btn-edit {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 1.35rem;
-  height: 1.35rem;
-  padding: 0;
-  min-width: 0;
-  border-radius: 6px;
-  border-color: transparent;
-  background: transparent;
-  color: var(--muted);
-  flex-shrink: 0;
-  line-height: 0;
-}
-
-.btn-edit:hover {
-  color: var(--text);
-  background: rgba(255, 255, 255, 0.06);
-  border-color: var(--border);
-}
-
-.btn-edit .icon-edit {
-  width: 11px;
-  height: 11px;
-}
-
-.icon-edit {
-  display: block;
-}
-
 .worker-peer-groups {
   display: flex;
   flex-direction: column;
@@ -909,6 +878,35 @@ a.peer-group-card-title:hover {
 .btn-lg { padding: 0.85rem 1.25rem; font-size: 0.95rem; width: 100%; }
 
 .btn-icon { min-width: auto; padding: 0.4rem 0.65rem; }
+
+.btn.btn-edit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.35rem;
+  height: 1.35rem;
+  padding: 0;
+  min-width: 0;
+  border-radius: 6px;
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted);
+  flex-shrink: 0;
+  line-height: 0;
+  gap: 0;
+}
+
+.btn.btn-edit:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.06);
+  border-color: var(--border);
+}
+
+.btn.btn-edit .icon-edit {
+  display: block;
+  width: 11px;
+  height: 11px;
+}
 
 .btn:disabled {
   opacity: 0.45;
