@@ -461,4 +461,72 @@
     });
   });
   wireDialogClose(renameGatewayModal, document.getElementById("rename-gateway-close"));
+
+  document.querySelectorAll(".btn-restart-gateway").forEach((btn) => {
+    btn.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const tile = btn.closest(".gateway-tile");
+      const overlay = tile?.querySelector(".gateway-restart-overlay");
+      if (!overlay) return;
+      overlay.hidden = false;
+    });
+  });
+  document.querySelectorAll(".gateway-restart-cancel").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const overlay = btn.closest(".gateway-restart-overlay");
+      if (overlay) overlay.hidden = true;
+    });
+  });
+
+  async function pollGatewayBootStatus(gatewayId, timeoutMs = 180000) {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      const response = await fetch(`/orchestrator/ui/gateways/${gatewayId}/boot-status`, {
+        headers: { Accept: "application/json" },
+      });
+      if (!response.ok) {
+        throw new Error("Could not read gateway status");
+      }
+      const data = await response.json();
+      if (data.ready) return data;
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+    }
+    throw new Error("Gateway restart timed out");
+  }
+
+  document.querySelectorAll(".gateway-restart-form").forEach((form) => {
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const tile = form.closest(".gateway-tile");
+      const confirmOverlay = tile?.querySelector(".gateway-restart-overlay");
+      const progressOverlay = tile?.querySelector(".gateway-tile-restart-progress");
+      const match = form.action.match(/\/gateways\/(\d+)\/restart$/);
+      const gatewayId = match?.[1];
+      if (!tile || !progressOverlay || !gatewayId) return;
+
+      confirmOverlay.hidden = true;
+      tile.classList.add("gateway-tile-restarting");
+      progressOverlay.hidden = false;
+
+      try {
+        const response = await fetch(form.action, {
+          method: "POST",
+          body: new FormData(form),
+          headers: { Accept: "application/json" },
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok || !payload.ok) {
+          throw new Error(payload.error || "Gateway restart failed");
+        }
+        await pollGatewayBootStatus(gatewayId);
+        window.location.reload();
+      } catch (error) {
+        tile.classList.remove("gateway-tile-restarting");
+        progressOverlay.hidden = true;
+        const message = error instanceof Error ? error.message : "Gateway restart failed";
+        window.alert(message);
+      }
+    });
+  });
 })();

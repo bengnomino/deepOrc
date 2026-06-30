@@ -24,6 +24,3 @@ allowed=$(sed -n '/^\[Peer\]/,$ s/^AllowedIPs = //p' "$CONF" | head -1 | tr -d '
 [ -n "$peer_pub" ] || exit 0
 [ -n "$allowed" ] || allowed="0.0.0.0/0,::/0"
 wg set wg0 peer "$peer_pub" allowed-ips "$allowed" persistent-keepalive 25
-
-[ -x /opt/gateway-agent/deeporc-routing.sh ] \
-	&& /opt/gateway-agent/deeporc-routing.sh apply

@@ -80,6 +80,13 @@ def delete_gateway_vm(client: IncusClient, name: str) -> None:
     client.delete_instance(name)
 
 
+def restart_gateway_vm(client: IncusClient, name: str) -> None:
+    state = client.get_instance_state(name)
+    if state.get("status") == "Running":
+        client.stop_instance(name)
+    client.start_instance(name)
+
+
 def get_vm_status(client: IncusClient, name: str) -> str:
     state = client.get_instance_state(name)
     return state.get("status", "unknown")

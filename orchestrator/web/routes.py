@@ -626,6 +626,56 @@ def retry_gateway_ui(
     return RedirectResponse(url=f"/orchestrator/ui/gateways/{gateway_id}", status_code=303)
 
 
+@router.post("/gateways/{gateway_id}/restart", response_model=None)
+def restart_gateway_ui(
+    request: Request,
+    gateway_id: int,
+    session: DbSession,
+    redirect_to: str = Form(""),
+) -> RedirectResponse | JSONResponse:
+    service = GatewayService(session)
+    wants_json = "application/json" in request.headers.get("accept", "")
+    try:
+        gateway = service.restart_gateway(gateway_id)
+        message = f"Gateway {gateway.name} restarted"
+        if wants_json:
+            return JSONResponse({"ok": True, "gateway_id": gateway_id, "message": message})
+        if redirect_to.startswith("/orchestrator/ui") and "://" not in redirect_to:
+            url = f"{redirect_to}?ok={quote(message)}"
+        else:
+            url = f"/orchestrator/ui?ok={quote(message)}"
+        return RedirectResponse(url=url, status_code=303)
+    except ValueError as exc:
+        session.rollback()
+        if wants_json:
+            return JSONResponse({"ok": False, "error": str(exc)}, status_code=400)
+        if redirect_to.startswith("/orchestrator/ui") and "://" not in redirect_to:
+            url = f"{redirect_to}?error={quote(str(exc))}"
+        else:
+            url = f"/orchestrator/ui?error={quote(str(exc))}"
+        return RedirectResponse(url=url, status_code=303)
+    except Exception as exc:
+        session.rollback()
+        logger.exception("Gateway restart failed for %s", gateway_id)
+        message = str(exc) or "Gateway restart failed"
+        if wants_json:
+            return JSONResponse({"ok": False, "error": message}, status_code=500)
+        if redirect_to.startswith("/orchestrator/ui") and "://" not in redirect_to:
+            url = f"{redirect_to}?error={quote(message)}"
+        else:
+            url = f"/orchestrator/ui?error={quote(message)}"
+        return RedirectResponse(url=url, status_code=303)
+
+
+@router.get("/gateways/{gateway_id}/boot-status")
+def gateway_boot_status_ui(gateway_id: int, session: DbSession) -> JSONResponse:
+    service = GatewayService(session)
+    try:
+        return JSONResponse(service.gateway_boot_status(gateway_id))
+    except ValueError as exc:
+        return JSONResponse({"ok": False, "error": str(exc)}, status_code=404)
+
+
 @router.post("/gateways/{gateway_id}/delete")
 def delete_gateway_ui(
     gateway_id: int,

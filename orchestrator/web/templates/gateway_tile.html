@@ -49,11 +49,37 @@
     {% endif %}
   </div>
   {% if row.gateway.status.value != 'deleting' %}
-  <a href="/orchestrator/ui/gateways/{{ row.gateway.id }}" class="gateway-tile-open btn btn-glow">Open</a>
+  <div class="gateway-tile-footer">
+    {% if row.gateway.status.value == 'ready' %}
+    <button type="button" class="gateway-tile-restart btn btn-ghost btn-restart-gateway"
+            data-gateway-id="{{ row.gateway.id }}"
+            data-gateway-name="{{ row.display_name }}">Restart</button>
+    {% else %}
+    <span class="gateway-tile-restart-spacer" aria-hidden="true"></span>
+    {% endif %}
+    <a href="/orchestrator/ui/gateways/{{ row.gateway.id }}" class="gateway-tile-open btn btn-glow">Open</a>
+  </div>
   {% endif %}
   {% if row.gateway.status.value == 'deleting' %}
   <div class="gateway-tile-overlay" aria-live="polite">
     <span class="gateway-tile-overlay-label">Deleting</span>
+  </div>
+  {% elif row.gateway.status.value == 'ready' %}
+  <div class="gateway-restart-overlay" hidden>
+    <form method="post" action="/orchestrator/ui/gateways/{{ row.gateway.id }}/restart" class="gateway-restart-form">
+      <input type="hidden" name="redirect_to" value="{{ request.url.path }}{% if request.url.query %}?{{ request.url.query }}{% endif %}">
+      <p class="gateway-restart-title">Restart gateway?</p>
+      <p class="gateway-restart-copy">
+        <strong>{{ row.display_name }}</strong> will reboot. WireGuard and Tailscale may be briefly unavailable.
+      </p>
+      <div class="gateway-restart-actions">
+        <button type="button" class="btn btn-ghost gateway-restart-cancel">Cancel</button>
+        <button type="submit" class="btn btn-glow">Restart</button>
+      </div>
+    </form>
+  </div>
+  <div class="gateway-tile-overlay gateway-tile-restart-progress" hidden aria-live="polite">
+    <span class="gateway-tile-overlay-label">Restarting…</span>
   </div>
   {% endif %}
 </article>

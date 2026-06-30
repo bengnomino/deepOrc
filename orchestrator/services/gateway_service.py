@@ -237,6 +237,58 @@ class GatewayService:
             logger.warning("tailscale status for %s failed: %s", gateway.name, exc)
             return None
 
+    def restart_gateway(self, gateway_id: int) -> Gateway:
+        from orchestrator.incus import IncusClient, restart_gateway_vm
+        from orchestrator.incus.gateway_post_reboot import apply_gateway_post_reboot
+
+        gateway = self._gateways.get_by_id(gateway_id)
+        if not gateway:
+            raise ValueError(f"Gateway {gateway_id} not found")
+        if gateway.status != GatewayStatus.READY:
+            raise ValueError("Gateway is not ready")
+        worker = self._resolve_worker(gateway)
+        target = incus_target(worker, gateway.incus_instance)
+        client_ctx = IncusClient() if worker.is_local else IncusClient(worker=worker)
+        with client_ctx as client:
+            restart_gateway_vm(client, gateway.incus_instance)
+        apply_gateway_post_reboot(target)
+        return gateway
+
+    def gateway_boot_status(self, gateway_id: int) -> dict[str, object]:
+        from orchestrator.crypto import decrypt_value
+        from orchestrator.incus import IncusClient, get_vm_status
+
+        gateway = self._gateways.get_by_id(gateway_id)
+        if not gateway:
+            raise ValueError(f"Gateway {gateway_id} not found")
+        worker = self._resolve_worker(gateway)
+        vm_status = "unknown"
+        try:
+            client_ctx = IncusClient() if worker.is_local else IncusClient(worker=worker)
+            with client_ctx as client:
+                vm_status = get_vm_status(client, gateway.incus_instance)
+        except Exception as exc:
+            logger.debug("VM status for gateway %s failed: %s", gateway.name, exc)
+
+        tailscale_online = False
+        wg_online = False
+        if gateway.status == GatewayStatus.READY and vm_status == "Running":
+            try:
+                token = decrypt_value(gateway.agent_token_enc)
+                health = self._agent_client(gateway, token).health()
+                tailscale_online = bool(health.get("tailscale_online"))
+                wg_online = bool(health.get("wg_online"))
+            except Exception as exc:
+                logger.debug("Agent health for gateway %s failed: %s", gateway.name, exc)
+
+        ready = vm_status == "Running" and wg_online and tailscale_online
+        return {
+            "vm_status": vm_status,
+            "wg_online": wg_online,
+            "tailscale_online": tailscale_online,
+            "ready": ready,
+        }
+
     def provision_gateway(self, gateway_id: int, job_id: int | None = None) -> Gateway:
         from orchestrator.workers.provisioning_stages import (
             STAGE_AGENT_WAIT,

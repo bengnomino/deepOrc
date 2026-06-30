@@ -34,13 +34,57 @@ EXIT_MTU="${EXIT_MTU:-1420}"
 
 _log() { logger -t deeporc-routing "$*" 2>/dev/null || echo "deeporc-routing: $*"; }
 
+_tailscale_running() {
+	tailscale status --json 2>/dev/null | grep -q '"BackendState": "Running"'
+}
+
+_apply_headscale_login_routes() {
+	gw="$(_wan_gw)"
+	[ -n "$gw" ] || return 0
+	for dns in $PUBLIC_DNS; do
+		ip route replace "$dns/32" via "$gw" dev "$HOST_IF" table main 2>/dev/null || true
+	done
+	if [ -n "${HEADSCALE_URL:-}" ]; then
+		url="${HEADSCALE_URL#*://}"
+		host="${url%%/*}"
+		host="${host%%:*}"
+		for ip in $(_host_ipv4 "$host"); do
+			ip route replace "$ip/32" via "$gw" dev "$HOST_IF" table main 2>/dev/null || true
+		done
+		for ip in $(_host_ipv6 "$host"); do
+			ip -6 route replace "$ip/128" unreachable 2>/dev/null || true
+		done
+	fi
+}
+
 _host_ipv4() {
 	host="$1"
 	case "$host" in
 		*[!0-9.]*)
-			getent ahostsv4 "$host" 2>/dev/null | awk '{print $1}' | sort -u
+			if command -v getent >/dev/null 2>&1; then
+				getent ahostsv4 "$host" 2>/dev/null | awk '{print $1}' | sort -u
+			elif command -v nslookup >/dev/null 2>&1; then
+				nslookup -type=A "$host" 2>/dev/null \
+					| awk '/^Address[[:space:]]+[0-9]+\./ { print $2 }' \
+					| sort -u
+			fi
 			;;
 		*) echo "$host" ;;
+	esac
+}
+
+_host_ipv6() {
+	host="$1"
+	case "$host" in
+		*[!0-9.]*)
+			if command -v getent >/dev/null 2>&1; then
+				getent ahostsv6 "$host" 2>/dev/null | awk '{print $1}' | sort -u
+			elif command -v nslookup >/dev/null 2>&1; then
+				nslookup -type=AAAA "$host" 2>/dev/null \
+					| awk '/^Address[[:space:]]+.*:/ { print $2 }' \
+					| sort -u
+			fi
+			;;
 	esac
 }
 
@@ -168,6 +212,9 @@ _apply_wan_table() {
 		for ip in $(_host_ipv4 "$host"); do
 			ip route replace "$ip/32" via "$gw" dev "$HOST_IF" table "$WAN_TABLE" 2>/dev/null || true
 		done
+		for ip in $(_host_ipv6 "$host"); do
+			ip -6 route replace "$ip/128" unreachable 2>/dev/null || true
+		done
 	fi
 	for dns in $PUBLIC_DNS; do
 		ip route replace "$dns/32" via "$gw" dev "$HOST_IF" table "$WAN_TABLE" 2>/dev/null || true
@@ -187,19 +234,9 @@ _apply_main_table() {
 	ip route replace "$WG_SUBNET" dev "$UPLINK_IF" table main 2>/dev/null || true
 	ip route replace "$TAILNET" dev "$TS_IF" table main 2>/dev/null || true
 	ip route replace "$MAGICDNS" dev "$TS_IF" scope link table main 2>/dev/null || true
-	# Control plane + DNS bypass wg0 default in main (tailscale login before TS policy rules exist).
+	# Keep resolver + Headscale control-plane off wg0 until Tailscale is logged in.
 	if [ -n "$gw" ]; then
-		for dns in $PUBLIC_DNS; do
-			ip route replace "$dns/32" via "$gw" dev "$HOST_IF" table main 2>/dev/null || true
-		done
-		if [ -n "${HEADSCALE_URL:-}" ]; then
-			url="${HEADSCALE_URL#*://}"
-			host="${url%%/*}"
-			host="${host%%:*}"
-			for ip in $(_host_ipv4 "$host"); do
-				ip route replace "$ip/32" via "$gw" dev "$HOST_IF" table main 2>/dev/null || true
-			done
-		fi
+		_apply_headscale_login_routes
 	fi
 }
 
@@ -277,6 +314,13 @@ _apply_sysctl() {
 }
 
 apply() {
+	if ! _tailscale_running; then
+		_cleanup_stale
+		_apply_host_link
+		_apply_headscale_login_routes
+		_log "bootstrap OK (tailscale not running)"
+		return 0
+	fi
 	_cleanup_stale
 	_apply_dnsmasq_off
 	_apply_host_link
@@ -290,6 +334,13 @@ apply() {
 	_apply_sysctl
 	_apply_ethtool
 	_log "apply OK"
+}
+
+bootstrap() {
+	_cleanup_stale
+	_apply_host_link
+	_apply_headscale_login_routes
+	_log "bootstrap OK"
 }
 
 stop_rules() {
@@ -310,9 +361,10 @@ daemon() {
 
 case "${1:-apply}" in
 	apply) apply ;;
+	bootstrap) bootstrap ;;
 	start) apply; daemon ;;
 	stop) stop_rules ;;
 	reload) apply ;;
 	daemon) daemon ;;
-	*) echo "usage: $0 {apply|start|stop|reload|daemon}" >&2; exit 1 ;;
+	*) echo "usage: $0 {apply|bootstrap|start|stop|reload|daemon}" >&2; exit 1 ;;
 esac
