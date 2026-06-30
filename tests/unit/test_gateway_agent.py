@@ -2,7 +2,16 @@
 
 from unittest.mock import patch
 
+from gateway_agent.health import tailscale_status_text
 from gateway_agent.wg_handler import list_peers
+
+
+def test_tailscale_status_text_returns_stdout():
+    with patch(
+        "gateway_agent.health.subprocess.run",
+        return_value=type("R", (), {"returncode": 0, "stdout": "100.64.0.3 gw-000\n", "stderr": ""})(),
+    ):
+        assert tailscale_status_text() == "100.64.0.3 gw-000"
 
 
 def test_list_peers_parses_dump():

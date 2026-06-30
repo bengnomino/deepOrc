@@ -102,6 +102,40 @@ class GatewayAgentClient:
     def health(self) -> dict[str, Any]:
         return self._request("GET", "/v1/health")
 
+    def tailscale_status(self) -> dict[str, Any]:
+        last_err: Exception | None = None
+        try:
+            return self._request("GET", "/v1/tailscale/status")
+        except httpx.HTTPStatusError as exc:
+            last_err = exc
+            if exc.response.status_code not in {404, 503} or not self._incus_instance:
+                raise
+        except Exception as exc:
+            last_err = exc
+        if self._incus_instance:
+            return self._tailscale_status_via_incus()
+        if last_err is not None:
+            raise last_err
+        return {"status": ""}
+
+    def _tailscale_status_via_incus(self) -> dict[str, Any]:
+        if not self._incus_instance:
+            raise RuntimeError("incus instance required for direct tailscale status")
+        cmd = [
+            "incus",
+            "exec",
+            self._incus_instance,
+            "--",
+            "/usr/sbin/tailscale",
+            "status",
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=60, check=False)
+        if result.returncode != 0:
+            raise RuntimeError(
+                result.stderr.strip() or result.stdout.strip() or "tailscale status failed"
+            )
+        return {"status": result.stdout.strip()}
+
     def add_peer(self, public_key: str, allowed_ips: str) -> dict[str, Any]:
         return self._request("POST", "/v1/peers", json={"public_key": public_key, "allowed_ips": allowed_ips})
 

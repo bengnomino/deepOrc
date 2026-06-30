@@ -223,6 +223,20 @@ class GatewayService:
         self._session.commit()
         return gateway
 
+    def fetch_tailscale_status(self, gateway: Gateway) -> str | None:
+        if gateway.status != GatewayStatus.READY:
+            return None
+        from orchestrator.crypto import decrypt_value
+
+        try:
+            agent_token = decrypt_value(gateway.agent_token_enc)
+            data = self._agent_client(gateway, agent_token).tailscale_status()
+            text = (data.get("status") or "").strip()
+            return text or None
+        except Exception as exc:
+            logger.warning("tailscale status for %s failed: %s", gateway.name, exc)
+            return None
+
     def provision_gateway(self, gateway_id: int, job_id: int | None = None) -> Gateway:
         from orchestrator.workers.provisioning_stages import (
             STAGE_AGENT_WAIT,

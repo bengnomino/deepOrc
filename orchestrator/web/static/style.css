@@ -1370,6 +1370,26 @@ code {
   line-height: 1.45;
   resize: vertical;
 }
+
+.tailscale-status-block {
+  margin: 0;
+  padding: 0.85rem 1rem;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: rgba(7, 11, 18, 0.55);
+  font-family: ui-monospace, "Cascadia Code", monospace;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 16rem;
+  overflow: auto;
+}
+
+.tailscale-status-unavailable {
+  margin: 0.5rem 0 0;
+  font-size: 0.85rem;
+}
 .registration-id-box {
   margin: 1rem 0;
   padding: 1rem;

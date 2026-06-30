@@ -24,6 +24,20 @@ def tailscale_online() -> bool:
     return result.returncode == 0 and '"Online": true' in result.stdout
 
 
+def tailscale_status_text() -> str:
+    """Human-readable output of `tailscale status` inside the gateway."""
+    result = subprocess.run(
+        ["/usr/sbin/tailscale", "status"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout or "tailscale status failed").strip()
+        raise RuntimeError(detail)
+    return result.stdout.strip() or "(empty)"
+
+
 def nft_running() -> bool:
     result = subprocess.run(["systemctl", "is-active", "nftables"], capture_output=True, text=True)
     return result.stdout.strip() == "active"

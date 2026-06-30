@@ -39,3 +39,18 @@ def test_incus_http_script_delete_prefers_curl():
 def test_incus_http_script_incus_only_when_instance_set():
     client = GatewayAgentClient("10.10.1.10", "tok", incus_instance="gw-test")
     assert client._incus_instance == "gw-test"
+
+
+def test_tailscale_status_falls_back_to_incus(monkeypatch):
+    client = GatewayAgentClient("10.10.1.10", "tok", incus_instance="gw-test")
+
+    def fake_request(method, path, **kwargs):
+        raise RuntimeError("agent endpoint missing")
+
+    monkeypatch.setattr(client, "_request", fake_request)
+    monkeypatch.setattr(
+        client,
+        "_tailscale_status_via_incus",
+        lambda: {"status": "100.64.0.3 gw-000"},
+    )
+    assert client.tailscale_status() == {"status": "100.64.0.3 gw-000"}

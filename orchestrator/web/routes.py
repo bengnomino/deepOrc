@@ -506,6 +506,9 @@ def gateway_detail(
     from orchestrator.workers.provisioning_stages import format_provision_progress
 
     provision_progress = format_provision_progress(provision_job)
+    tailscale_status = None
+    if gateway.status == GatewayStatus.READY:
+        tailscale_status = gs.fetch_tailscale_status(gateway)
     return templates.TemplateResponse(
         request,
         "gateway_detail.html",
@@ -522,6 +525,7 @@ def gateway_detail(
             "metrics": metrics,
             "provision_progress": provision_progress,
             "peer_group": gateway.peer_group,
+            "tailscale_status": tailscale_status,
             "flash_error": error,
             "flash_ok": ok,
         },
