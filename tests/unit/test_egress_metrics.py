@@ -58,6 +58,19 @@ def test_should_not_refresh_before_cooldown_even_on_state_change():
 def test_merge_egress_keeps_previous_on_failed_refresh():
     now = datetime.now(UTC)
     previous = EgressSnapshot("1.2.3.4", "IT", now - timedelta(hours=1))
-    merged = merge_egress(previous, EgressSnapshot(None, None, None), refreshed_now=False, now=now)
+    merged = merge_egress(previous, EgressSnapshot(None, None, None), attempted=True, now=now)
     assert merged.public_ip == "1.2.3.4"
     assert merged.country_code == "IT"
+    assert merged.updated_at == now
+
+
+def test_should_retry_missing_egress_after_cooldown():
+    now = datetime.now(UTC)
+    state = interface_state(True, True, True)
+    snapshot = EgressSnapshot(None, None, now - timedelta(seconds=EGRESS_REFRESH_SECONDS + 1))
+    assert should_refresh_egress(
+        previous_state=state,
+        current_state=state,
+        snapshot=snapshot,
+        now=now,
+    )

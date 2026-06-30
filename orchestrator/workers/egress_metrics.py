@@ -57,27 +57,32 @@ def should_refresh_egress(
     snapshot: EgressSnapshot,
     now: datetime,
 ) -> bool:
+    """Refresh only external egress lookups (public IP + geo), at most every 5 minutes."""
     if not pathways_ready(current_state):
-        return False
-    if not interface_state_changed(previous_state, current_state):
         return False
     if snapshot.updated_at is None:
         return True
     age = (now - snapshot.updated_at).total_seconds()
-    return age >= EGRESS_REFRESH_SECONDS
+    if age < EGRESS_REFRESH_SECONDS:
+        return False
+    if not snapshot.public_ip:
+        return True
+    return interface_state_changed(previous_state, current_state)
 
 
 def merge_egress(
     snapshot: EgressSnapshot,
     refreshed: EgressSnapshot | None,
     *,
-    refreshed_now: bool,
+    attempted: bool = False,
     now: datetime,
 ) -> EgressSnapshot:
     if refreshed and refreshed.public_ip:
         return EgressSnapshot(
             public_ip=refreshed.public_ip,
-            country_code=refreshed.country_code,
-            updated_at=now if refreshed_now else snapshot.updated_at,
+            country_code=refreshed.country_code or snapshot.country_code,
+            updated_at=now,
         )
+    if attempted:
+        return EgressSnapshot(snapshot.public_ip, snapshot.country_code, now)
     return snapshot

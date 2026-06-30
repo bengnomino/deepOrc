@@ -28,12 +28,17 @@ from orchestrator.workers.egress_metrics import (
 logger = logging.getLogger(__name__)
 
 
-def _egress_geo_from_agent(agent: GatewayAgentClient) -> EgressSnapshot:
+def _egress_geo_from_agent(
+    agent: GatewayAgentClient,
+    snapshot: EgressSnapshot,
+) -> EgressSnapshot:
     try:
         payload = agent.egress_public_ip()
         ip = (payload.get("ip") or "").strip()
         if not ip:
             return EgressSnapshot(None, None, None)
+        if ip == snapshot.public_ip and snapshot.country_code:
+            return EgressSnapshot(ip, snapshot.country_code, None)
         geo = lookup_geo(ip)
         if geo:
             return EgressSnapshot(geo.ip, geo.country_code, None)
@@ -74,8 +79,8 @@ def _resolve_egress(
     ):
         return snapshot
 
-    refreshed = _egress_geo_from_agent(agent)
-    return merge_egress(snapshot, refreshed, refreshed_now=bool(refreshed.public_ip), now=now)
+    refreshed = _egress_geo_from_agent(agent, snapshot)
+    return merge_egress(snapshot, refreshed, attempted=True, now=now)
 
 
 def collect_metrics(session: Session) -> int:
@@ -119,16 +124,6 @@ def collect_metrics(session: Session) -> int:
                 wg_online = health.get("wg_online")
                 exit_node_reachable = health.get("exit_node_configured")
 
-                snapshot = _resolve_egress(
-                    agent,
-                    latest_metric=latest,
-                    egress_metric=egress_metric,
-                    tailscale_online=tailscale_online,
-                    wg_online=wg_online,
-                    exit_node_reachable=exit_node_reachable,
-                    now=now,
-                )
-
                 peer_stats = {p["public_key"]: p for p in agent.list_peers()}
                 for peer in peers_repo.list_by_gateway(gateway.id):
                     stats = peer_stats.get(peer.public_key)
@@ -142,6 +137,16 @@ def collect_metrics(session: Session) -> int:
                             stats.get("rx_bytes"),
                             stats.get("tx_bytes"),
                         )
+
+                snapshot = _resolve_egress(
+                    agent,
+                    latest_metric=latest,
+                    egress_metric=egress_metric,
+                    tailscale_online=tailscale_online,
+                    wg_online=wg_online,
+                    exit_node_reachable=exit_node_reachable,
+                    now=now,
+                )
             except Exception as exc:
                 logger.warning("Agent metrics failed for %s: %s", gateway.name, exc)
 

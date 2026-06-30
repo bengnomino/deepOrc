@@ -25,6 +25,7 @@ TS_IP="$(tailscale ip -4)"
 [[ -n "$TS_IP" ]] || { echo "tailscale has no IPv4 address" >&2; exit 1; }
 
 if command -v incus >/dev/null 2>&1; then
-  incus config set core.https_address "[${TS_IP}]:8443"
-  systemctl restart incus
+  timeout 90 systemctl start incus || true
+  timeout 60 incus admin waitready 2>/dev/null || true
+  timeout 30 incus config set core.https_address "[${TS_IP}]:8443" || true
 fi
