@@ -5,6 +5,8 @@ from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
+from orchestrator.wg.config import BACKHAUL_WG_MTU, GATEWAY_EXIT_MTU
+
 TEMPLATES_DIR = Path(__file__).parent / "templates"
 
 
@@ -24,6 +26,8 @@ class CloudInitParams:
     gateway_agent_wheel_url: str = ""
     use_golden_image: bool = False
     net_interface: str = "eth0"
+    wg_mtu: int = BACKHAUL_WG_MTU
+    exit_mtu: int = GATEWAY_EXIT_MTU
 
 
 def render_user_data(params: CloudInitParams) -> str:

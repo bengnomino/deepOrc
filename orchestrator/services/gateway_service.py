@@ -12,6 +12,7 @@ from orchestrator.headscale import (
     approve_exit_routes_for_tagged_nodes,
     approve_node_exit_route,
     create_gateway_preauth_key,
+    delete_gateway_headscale_node,
     find_gateway_headscale_node,
 )
 from orchestrator.headscale.client import (
@@ -418,6 +419,19 @@ class GatewayService:
                     self._jobs.update_status(job, JobStatus.COMPLETED)
                     self._session.commit()
             return
+
+        tailscale_ip = (
+            gateway.exit_node_id
+            if gateway.exit_node_id not in {"", EXIT_NODE_PENDING}
+            else None
+        )
+        try:
+            delete_gateway_headscale_node(
+                tailscale_ip=tailscale_ip,
+                hostnames=[gateway.tailscale_hostname, gateway.name],
+            )
+        except HeadscaleError:
+            pass
 
         worker = self._resolve_worker(gateway)
         try:

@@ -60,6 +60,9 @@ def test_render_exit_host_script_uses_base64_and_mkdir_iproute2():
     assert base64.b64encode(wg_conf.strip().encode()).decode() in script
     assert "mac_100" in script
     assert "wg-quick up wg-gw000" in script
+    assert "ip link set wg-gw000 mtu 1380" in script
+    assert "ip rule add pref 32100 from 192.168.13.100/32 lookup 100" in script
+    assert "ip rule add pref 32600 iif wg-gw000 lookup 100" in script
     assert "skip WireGuard" not in script
 
 

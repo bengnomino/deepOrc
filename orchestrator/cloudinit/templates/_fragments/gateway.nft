@@ -4,6 +4,8 @@ table ip gw_nat {
   chain postrouting {
     type nat hook postrouting priority srcnat; policy accept;
     ip saddr 100.64.0.0/10 oifname "wg0" masquerade
+    ip saddr 100.64.0.0/10 oifname "eth0" udp dport 53 masquerade
+    ip saddr 100.64.0.0/10 oifname "eth0" tcp dport 53 masquerade
   }
 }
 table ip deeporc_exit {
@@ -11,5 +13,12 @@ table ip deeporc_exit {
     type filter hook forward priority filter; policy accept;
     iifname "tailscale0" oifname "wg0" accept
     iifname "wg0" oifname "tailscale0" accept
+  }
+}
+table ip deeporc_mangle {
+  chain forward {
+    type filter hook forward priority mangle; policy accept;
+    iifname "tailscale0" oifname "wg0" tcp flags syn tcp option maxseg size set rt mtu
+    iifname "wg0" oifname "tailscale0" tcp flags syn tcp option maxseg size set rt mtu
   }
 }

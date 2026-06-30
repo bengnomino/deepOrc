@@ -290,6 +290,26 @@ def rename_headscale_node(node_id: int, new_name: str) -> None:
     _run_headscale(["nodes", "rename", new_name, "-i", str(node_id)])
 
 
+def delete_headscale_node(node_id: int) -> None:
+    _run_headscale(["nodes", "delete", "-i", str(node_id), "--force"])
+
+
+def delete_gateway_headscale_node(
+    *,
+    tailscale_ip: str | None = None,
+    hostnames: list[str] | None = None,
+) -> bool:
+    """Remove a gateway's Headscale node if it still exists."""
+    node = find_gateway_headscale_node(tailscale_ip=tailscale_ip, hostnames=hostnames)
+    if not node:
+        return False
+    node_id = node.get("id")
+    if node_id is None:
+        return False
+    delete_headscale_node(int(node_id))
+    return True
+
+
 def assign_exit_node_name(
     node_id: int,
     reserved: set[str] | None = None,

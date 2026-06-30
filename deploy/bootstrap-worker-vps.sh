@@ -56,6 +56,7 @@ install -m 600 "$ENV_FILE" /etc/deeporc/worker.env
 sed -i "s|^APP_DIR=.*|APP_DIR=${APP_DIR}|" /etc/deeporc/worker.env 2>/dev/null || true
 
 "$APP_DIR/deploy/install-worker-heartbeat.sh" "$APP_DIR"
+"$APP_DIR/deploy/install-deeporc-worker-net.sh" "$APP_DIR"
 
 save_worker_env "$ENV_FILE"
 install -m 600 "$ENV_FILE" /etc/deeporc/worker.env

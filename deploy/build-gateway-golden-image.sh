@@ -74,6 +74,10 @@ incus_exec sh -c '
   done
   opkg install tailscale kmod-wireguard 2>/dev/null || opkg install tailscale
   opkg install wireguard-tools 2>/dev/null || true
+  mkdir -p /opt/gateway-agent/packages
+  if [ -f /opt/gateway-agent/packages/ethtool.ipk ]; then
+    opkg install /opt/gateway-agent/packages/ethtool.ipk 2>/dev/null || true
+  fi
   command -v curl
   wget -qO /dev/null http://127.0.0.1/ 2>/dev/null || command -v wget
 '
@@ -83,15 +87,26 @@ echo "==> Installing gateway-agent and init scripts"
 incus_exec mkdir -p /opt/gateway-agent /etc/wireguard /etc/nftables.d
 incus_push "$AGENT_BIN" /opt/gateway-agent/gateway-agent
 incus_push "$SCRIPT_DIR/openwrt/wg-up.sh" /opt/gateway-agent/wg-up.sh
+incus_push "$SCRIPT_DIR/openwrt/deeporc-routing-daemon.sh" /opt/gateway-agent/deeporc-routing-daemon.sh
+incus_push "$SCRIPT_DIR/openwrt/deeporc-routing.sh" /opt/gateway-agent/deeporc-routing.sh
 incus_push "$SCRIPT_DIR/openwrt/exit-via-wg.sh" /opt/gateway-agent/exit-via-wg.sh
 incus_push "$SCRIPT_DIR/nftables/gateway-openwrt.nft" /etc/nftables.d/gateway.nft
+if [ -f "$SCRIPT_DIR/openwrt/packages/ethtool_6.11-r1_x86_64.ipk" ]; then
+	incus_exec mkdir -p /opt/gateway-agent/packages
+	incus_push "$SCRIPT_DIR/openwrt/packages/ethtool_6.11-r1_x86_64.ipk" /opt/gateway-agent/packages/ethtool.ipk
+	incus_exec opkg install /opt/gateway-agent/packages/ethtool.ipk 2>/dev/null || true
+fi
 incus_push "$SCRIPT_DIR/openwrt/gateway-agent.init" /etc/init.d/gateway-agent
 incus_push "$SCRIPT_DIR/openwrt/gateway-wg.init" /etc/init.d/gateway-wg
 incus_push "$SCRIPT_DIR/openwrt/tailscale-up.init" /etc/init.d/tailscale-up
-incus_push "$SCRIPT_DIR/openwrt/exit-via-wg.init" /etc/init.d/exit-via-wg
-incus_exec chmod 755 /opt/gateway-agent/gateway-agent /opt/gateway-agent/wg-up.sh /opt/gateway-agent/exit-via-wg.sh
-incus_exec chmod 755 /etc/init.d/gateway-agent /etc/init.d/gateway-wg /etc/init.d/tailscale-up /etc/init.d/exit-via-wg
-incus_exec rc-update add exit-via-wg default 2>/dev/null || true
+incus_push "$SCRIPT_DIR/openwrt/deeporc-routing.init" /etc/init.d/deeporc-routing
+incus_exec mkdir -p /etc/hotplug.d/iface
+incus_push "$SCRIPT_DIR/openwrt/99-deeporc-routing.hotplug" /etc/hotplug.d/iface/99-deeporc-routing
+incus_exec chmod 755 /opt/gateway-agent/gateway-agent /opt/gateway-agent/wg-up.sh \
+	/opt/gateway-agent/deeporc-routing.sh /opt/gateway-agent/exit-via-wg.sh
+incus_exec chmod 755 /etc/init.d/gateway-agent /etc/init.d/gateway-wg /etc/init.d/tailscale-up \
+	/etc/init.d/deeporc-routing /etc/hotplug.d/iface/99-deeporc-routing
+incus_exec rc-update add deeporc-routing default 2>/dev/null || true
 
 echo "==> Verifying baked stack"
 incus_exec test -x /opt/gateway-agent/gateway-agent

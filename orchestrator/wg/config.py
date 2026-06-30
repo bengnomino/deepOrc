@@ -2,6 +2,11 @@
 
 from dataclasses import dataclass
 
+# Safe MTU for backhaul WG over Tailscale exit path (1500 - WG/Tailscale headroom).
+BACKHAUL_WG_MTU = 1380
+# OpenWrt exit node: tailscale0 (1280 default) + wg0 need headroom for TLS backhaul.
+GATEWAY_EXIT_MTU = 1420
+
 
 @dataclass(frozen=True)
 class ServerConfigParams:
@@ -37,7 +42,7 @@ def render_client_config(params: ClientConfigParams) -> str:
 PrivateKey = {params.private_key}
 Address = {params.address}/32
 DNS = {params.dns}
-MTU = 1280
+MTU = {BACKHAUL_WG_MTU}
 
 [Peer]
 PublicKey = {params.server_public_key}

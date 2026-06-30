@@ -11,13 +11,25 @@ WG_GATEWAY_REPLY_RULE_PREF = "40"
 WG_PEER_RETURN_RULE_PREF = "35"
 WG_UDP_REPLY_RULE_PREF = "50"
 GATEWAY_TS_RULE_PREF = "45"
+PUBLIC_DNS_RULE_PREFS = {
+    "8.8.8.8": "52",
+    "8.8.4.4": "53",
+    "1.1.1.1": "54",
+    "1.0.0.1": "55",
+}
+PUBLIC_DNS_RESOLVERS = tuple(PUBLIC_DNS_RULE_PREFS.keys())
+TAILNET_RETURN_RULE_PREF = "48"
+MAGICDNS_V6_RULE_PREF = "56"
+MAGICDNS_V4_RULE_PREF = "57"
 EXIT_CLIENT_RULE_PREF = "58"
+WG_INGRESS_RULE_PREF = "59"
 BACKHAUL_ROUTE_TABLE = "200"
 BACKHAUL_ROUTE_TABLE_NAME = "backhaul"
 STALE_PEER_RULE_PREF = "100"
 STALE_PEER_TABLE = "100"
 TAILSCALE_SNAT_SUBNET = "100.64.0.0/10"
 UPLINK_INTERFACE = "wg0"
+HOST_INTERFACE = "eth0"
 
 
 def _run(cmd: list[str]) -> None:
@@ -188,10 +200,102 @@ def _tailscale_gateway_ip() -> str | None:
 
 def _cleanup_stale_exit_hacks() -> None:
     """Remove experimental fwmark/mangle rules from earlier iterations."""
-    for pref in ("54", "55", "60"):
-        _run_optional(["ip", "rule", "del", "pref", pref])
+    _run_optional(["ip", "rule", "del", "pref", "60"])
     for table in ("ip gw_mangle", "ip gw_preroute"):
         _run_optional(["nft", "delete", "table", *table.split()])
+
+
+def _ensure_public_dns_bypass() -> None:
+    """Client DNS to public resolvers must not traverse deeper backhaul."""
+    host_gw = _host_default_gw()
+    for resolver in PUBLIC_DNS_RESOLVERS:
+        _run_optional(["ip", "route", "del", f"{resolver}/32", "dev", UPLINK_INTERFACE])
+        if host_gw:
+            _run_optional(
+                [
+                    "ip",
+                    "route",
+                    "replace",
+                    f"{resolver}/32",
+                    "via",
+                    host_gw,
+                    "dev",
+                    HOST_INTERFACE,
+                ]
+            )
+        pref = PUBLIC_DNS_RULE_PREFS[resolver]
+        _ensure_ip_rule(pref, ["to", resolver, "lookup", "main"])
+
+
+def _host_default_gw() -> str | None:
+    result = subprocess.run(
+        ["ip", "-4", "route", "show", "default", "dev", HOST_INTERFACE],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    match = re.search(r"default via (\S+)", result.stdout)
+    return match.group(1) if match else None
+
+
+def _ensure_eth0_dns_snat() -> None:
+    """SNAT client DNS queries forwarded out eth0 (bypass deeper)."""
+    result = subprocess.run(
+        ["nft", "list", "chain", "ip", "gw_nat", "postrouting"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode == 0 and 'oifname "eth0" udp dport 53' in result.stdout:
+        return
+    _run_optional(["nft", "add", "table", "ip", "gw_nat"])
+    if subprocess.run(
+        ["nft", "list", "chain", "ip", "gw_nat", "postrouting"],
+        capture_output=True,
+        check=False,
+    ).returncode != 0:
+        _run_optional(
+            [
+                "nft",
+                "add",
+                "chain",
+                "ip",
+                "gw_nat",
+                "postrouting",
+                "{",
+                "type",
+                "nat",
+                "hook",
+                "postrouting",
+                "priority",
+                "srcnat",
+                ";",
+                "policy",
+                "accept",
+                ";",
+                "}",
+            ]
+        )
+    for proto in ("udp", "tcp"):
+        _run_optional(
+            [
+                "nft",
+                "add",
+                "rule",
+                "ip",
+                "gw_nat",
+                "postrouting",
+                "ip",
+                "saddr",
+                TAILSCALE_SNAT_SUBNET,
+                "oifname",
+                HOST_INTERFACE,
+                proto,
+                "dport",
+                "53",
+                "masquerade",
+            ]
+        )
 
 
 def _ensure_backhaul_policy_routing(
@@ -209,7 +313,12 @@ def _ensure_backhaul_policy_routing(
         _ensure_ip_rule(GATEWAY_TS_RULE_PREF, ["from", f"{ts_ip}/32", "lookup", "main"])
 
     _cleanup_stale_exit_hacks()
+    _ensure_public_dns_bypass()
+    _ensure_ip_rule(TAILNET_RETURN_RULE_PREF, ["to", TAILSCALE_SNAT_SUBNET, "lookup", "main"])
+    _run_optional(["ip", "route", "replace", "100.100.100.100", "dev", "tailscale0", "scope", "link"])
+    _ensure_ip_rule(MAGICDNS_V4_RULE_PREF, ["to", "100.100.100.100", "lookup", "main"])
     _ensure_ip_rule(EXIT_CLIENT_RULE_PREF, ["iif", "tailscale0", "lookup", BACKHAUL_ROUTE_TABLE])
+    _ensure_ip_rule(WG_INGRESS_RULE_PREF, ["iif", UPLINK_INTERFACE, "lookup", "main"])
 
     if subprocess.run(
         ["grep", "-q", BACKHAUL_ROUTE_TABLE_NAME, "/etc/iproute2/rt_tables"],
@@ -219,6 +328,18 @@ def _ensure_backhaul_policy_routing(
         with open("/etc/iproute2/rt_tables", "a", encoding="utf-8") as fh:
             fh.write(f"{BACKHAUL_ROUTE_TABLE} {BACKHAUL_ROUTE_TABLE_NAME}\n")
     _run(["ip", "route", "replace", "default", "dev", UPLINK_INTERFACE, "table", BACKHAUL_ROUTE_TABLE])
+    _run_optional(
+        [
+            "ip",
+            "route",
+            "replace",
+            TAILSCALE_SNAT_SUBNET,
+            "dev",
+            "tailscale0",
+            "table",
+            BACKHAUL_ROUTE_TABLE,
+        ]
+    )
 
 
 def _strip_tailscale_postrouting_masquerade() -> None:
@@ -238,6 +359,7 @@ def _ensure_exit_via_wg_backhaul() -> None:
     gateway_nft = Path("/etc/nftables.d/gateway.nft")
     if gateway_nft.is_file():
         _run(["nft", "-f", str(gateway_nft)])
+        _ensure_eth0_dns_snat()
         return
     _run_optional(["nft", "add", "table", "ip", "gw_nat"])
     _run_optional(
@@ -278,6 +400,26 @@ def _ensure_exit_via_wg_backhaul() -> None:
             "masquerade",
         ]
     )
+    for proto in ("udp", "tcp"):
+        _run_optional(
+            [
+                "nft",
+                "add",
+                "rule",
+                "ip",
+                "gw_nat",
+                "postrouting",
+                "ip",
+                "saddr",
+                TAILSCALE_SNAT_SUBNET,
+                "oifname",
+                HOST_INTERFACE,
+                proto,
+                "dport",
+                "53",
+                "masquerade",
+            ]
+        )
     _run_optional(["nft", "add", "table", "ip", "deeporc_exit"])
     _run_optional(
         [
@@ -341,11 +483,14 @@ def remove_exit_node_egress(wan_interface: str | None = None) -> None:
 def ensure_exit_node_forwarding(wan_interface: str | None = None) -> None:
     """Route + SNAT Tailscale exit via WireGuard uplink."""
     _ = wan_interface
+    routing_script = Path("/opt/gateway-agent/deeporc-routing.sh")
+    if routing_script.is_file():
+        _run([str(routing_script), "apply"])
+        return
     vm_ip = _vm_lan_ip()
     wg_gateway_ip = _wg_gateway_ip()
     wg_subnet = _wg_subnet()
     ts_ip = _tailscale_gateway_ip()
-
     _ensure_backhaul_policy_routing(vm_ip, wg_gateway_ip, wg_subnet, ts_ip)
     _ensure_exit_via_wg_backhaul()
 

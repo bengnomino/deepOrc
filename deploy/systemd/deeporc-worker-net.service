@@ -1,0 +1,15 @@
+[Unit]
+Description=deepOrc worker tailnet and Incus HTTPS bind
+After=network-online.target tailscaled.service
+Before=incus.service
+Wants=network-online.target tailscaled.service
+
+[Service]
+Type=oneshot
+EnvironmentFile=-/etc/deeporc/worker.env
+Environment=WORKER_ENV_FILE=/etc/deeporc/worker.env
+ExecStart=@APP_DIR@/deploy/deeporc-worker-net-up.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

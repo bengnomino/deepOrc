@@ -1,0 +1,9 @@
+#!/bin/sh
+# Re-apply deepOrc routing when uplink interfaces come up.
+[ "$ACTION" = "ifup" ] || exit 0
+case "${DEVICE:-${INTERFACE:-}}" in
+	eth0|wan|wg0|tailscale0|tun0)
+		[ -x /opt/gateway-agent/deeporc-routing.sh ] \
+			&& /opt/gateway-agent/deeporc-routing.sh apply
+		;;
+esac

@@ -9,6 +9,7 @@ import re
 from orchestrator.lan.ipam import default_lan_gateway
 from orchestrator.models.gateway import Gateway, GatewayStatus
 from orchestrator.models.peer_group import PeerGroup
+from orchestrator.wg.config import BACKHAUL_WG_MTU
 
 _IFACE_SAFE = re.compile(r"[^a-zA-Z0-9]")
 
@@ -100,6 +101,9 @@ def render_exit_host_script(
             f"ip link set {mac} up",
             f"grep -q '^{table} ' /etc/iproute2/rt_tables 2>/dev/null || echo '{table} deeporc-{slot}' >> /etc/iproute2/rt_tables",
             f"ip route replace default via \"${{LAN_GW}}\" dev {mac} table {table}",
+            f"ip route replace {lan_ip}/{prefix_len} dev {mac} scope link table {table}",
+            f"ip rule del from {lan_ip}/32 lookup {table} 2>/dev/null || true",
+            f"ip rule add pref {32000 + slot} from {lan_ip}/32 lookup {table}",
             f"ip rule del iif {wg_if} lookup {table} 2>/dev/null || true",
         ]
 
@@ -116,7 +120,8 @@ def render_exit_host_script(
             block += [
                 f"wg-quick down {wg_if} 2>/dev/null || true",
                 f"wg-quick up {wg_if}",
-                f"ip rule add iif {wg_if} lookup {table}",
+                f"ip link set {wg_if} mtu {BACKHAUL_WG_MTU}",
+                f"ip rule add pref {32500 + slot} iif {wg_if} lookup {table}",
                 f"iptables -C FORWARD -i {wg_if} -o {mac} -j ACCEPT 2>/dev/null || "
                 f"iptables -A FORWARD -i {wg_if} -o {mac} -j ACCEPT",
                 f"iptables -C FORWARD -i {mac} -o {wg_if} -m state --state RELATED,ESTABLISHED -j ACCEPT 2>/dev/null || "
@@ -148,12 +153,14 @@ def render_exit_host_teardown_script(
         mac = f"mac_{gateway.macvlan_slot}"
         wg_if = wg_interface_name(gateway.name)
         table = gateway.macvlan_slot
+        lan_ip = gateway.lan_ip or ""
         lines += [
             f"wg-quick down {wg_if} 2>/dev/null || true",
             f"rm -f /etc/wireguard/{wg_if}.conf 2>/dev/null || true",
             f"iptables -t nat -D POSTROUTING -o {mac} -j MASQUERADE 2>/dev/null || true",
             f"iptables -D FORWARD -i {wg_if} -o {mac} -j ACCEPT 2>/dev/null || true",
             f"iptables -D FORWARD -i {mac} -o {wg_if} -m state --state RELATED,ESTABLISHED -j ACCEPT 2>/dev/null || true",
+            f"ip rule del from {lan_ip}/32 lookup {table} 2>/dev/null || true",
             f"ip rule del iif {wg_if} lookup {table} 2>/dev/null || true",
             f"ip route flush table {table} 2>/dev/null || true",
             f"ip link del {mac} 2>/dev/null || true",

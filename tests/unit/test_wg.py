@@ -39,3 +39,4 @@ def test_render_client_config():
     assert "PrivateKey = peerpriv" in cfg
     assert "Endpoint = 203.0.113.1:51001" in cfg
     assert "AllowedIPs = 0.0.0.0/0, ::/0" in cfg
+    assert "MTU = 1380" in cfg
