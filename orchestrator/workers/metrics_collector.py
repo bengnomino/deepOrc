@@ -1,5 +1,7 @@
 """Periodic metrics collection from gateway agents."""
 
+from __future__ import annotations
+
 import logging
 from datetime import UTC, datetime
 
@@ -15,25 +17,65 @@ from orchestrator.repositories.peer_repo import PeerRepository
 from orchestrator.services.gateway_agent_client import GatewayAgentClient
 from orchestrator.services.ip_geo import lookup_geo
 from orchestrator.services.worker_service import WorkerService
+from orchestrator.workers.egress_metrics import (
+    EgressSnapshot,
+    egress_snapshot_from_metric,
+    interface_state,
+    merge_egress,
+    should_refresh_egress,
+)
 
 logger = logging.getLogger(__name__)
 
-_EGRESS_REFRESH_SECONDS = 3600
 
-
-def _egress_geo_from_agent(agent: GatewayAgentClient) -> tuple[str | None, str | None]:
+def _egress_geo_from_agent(agent: GatewayAgentClient) -> EgressSnapshot:
     try:
         payload = agent.egress_public_ip()
         ip = (payload.get("ip") or "").strip()
         if not ip:
-            return None, None
+            return EgressSnapshot(None, None, None)
         geo = lookup_geo(ip)
         if geo:
-            return geo.ip, geo.country_code
-        return ip, None
+            return EgressSnapshot(geo.ip, geo.country_code, None)
+        return EgressSnapshot(ip, None, None)
     except Exception as exc:
         logger.debug("egress geo lookup failed: %s", exc)
-        return None, None
+        return EgressSnapshot(None, None, None)
+
+
+def _resolve_egress(
+    agent: GatewayAgentClient,
+    *,
+    latest_metric,
+    egress_metric,
+    tailscale_online: bool | None,
+    wg_online: bool | None,
+    exit_node_reachable: bool | None,
+    now: datetime,
+) -> EgressSnapshot:
+    snapshot = egress_snapshot_from_metric(egress_metric)
+    if not snapshot.public_ip and latest_metric:
+        snapshot = egress_snapshot_from_metric(latest_metric)
+
+    previous_state = None
+    if latest_metric is not None:
+        previous_state = interface_state(
+            latest_metric.tailscale_online,
+            latest_metric.wg_online,
+            latest_metric.exit_node_reachable,
+        )
+    current_state = interface_state(tailscale_online, wg_online, exit_node_reachable)
+
+    if not should_refresh_egress(
+        previous_state=previous_state,
+        current_state=current_state,
+        snapshot=snapshot,
+        now=now,
+    ):
+        return snapshot
+
+    refreshed = _egress_geo_from_agent(agent)
+    return merge_egress(snapshot, refreshed, refreshed_now=bool(refreshed.public_ip), now=now)
 
 
 def collect_metrics(session: Session) -> int:
@@ -42,6 +84,7 @@ def collect_metrics(session: Session) -> int:
     metrics_repo = MetricsRepository(session)
     worker_service = WorkerService(session)
     count = 0
+    now = datetime.now(UTC)
 
     try:
         for gateway in gateways_repo.list_all():
@@ -57,11 +100,15 @@ def collect_metrics(session: Session) -> int:
             except Exception as exc:
                 logger.warning("VM status check failed for %s: %s", gateway.name, exc)
 
-            tailscale_online = None
-            wg_online = None
-            exit_node_reachable = None
-            egress_public_ip = None
-            egress_country_code = None
+            latest = metrics_repo.latest_gateway_metric(gateway.id)
+            egress_metric = metrics_repo.latest_gateway_metric_with_egress(gateway.id)
+            snapshot = egress_snapshot_from_metric(egress_metric)
+            if not snapshot.public_ip:
+                snapshot = egress_snapshot_from_metric(latest)
+
+            tailscale_online = latest.tailscale_online if latest else None
+            wg_online = latest.wg_online if latest else None
+            exit_node_reachable = latest.exit_node_reachable if latest else None
 
             try:
                 token = decrypt_value(gateway.agent_token_enc)
@@ -72,14 +119,15 @@ def collect_metrics(session: Session) -> int:
                 wg_online = health.get("wg_online")
                 exit_node_reachable = health.get("exit_node_configured")
 
-                latest = metrics_repo.latest_gateway_metric(gateway.id)
-                if latest and latest.egress_public_ip:
-                    age = (datetime.now(UTC) - latest.polled_at).total_seconds()
-                    if age < _EGRESS_REFRESH_SECONDS:
-                        egress_public_ip = latest.egress_public_ip
-                        egress_country_code = latest.egress_country_code
-                if egress_public_ip is None:
-                    egress_public_ip, egress_country_code = _egress_geo_from_agent(agent)
+                snapshot = _resolve_egress(
+                    agent,
+                    latest_metric=latest,
+                    egress_metric=egress_metric,
+                    tailscale_online=tailscale_online,
+                    wg_online=wg_online,
+                    exit_node_reachable=exit_node_reachable,
+                    now=now,
+                )
 
                 peer_stats = {p["public_key"]: p for p in agent.list_peers()}
                 for peer in peers_repo.list_by_gateway(gateway.id):
@@ -103,8 +151,9 @@ def collect_metrics(session: Session) -> int:
                 tailscale_online,
                 wg_online,
                 exit_node_reachable,
-                egress_public_ip=egress_public_ip,
-                egress_country_code=egress_country_code,
+                egress_public_ip=snapshot.public_ip,
+                egress_country_code=snapshot.country_code,
+                egress_updated_at=snapshot.updated_at,
             )
             count += 1
 

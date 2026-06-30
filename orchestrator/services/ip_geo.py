@@ -3,11 +3,15 @@
 from __future__ import annotations
 
 import logging
+import time
 from dataclasses import dataclass
 
 import httpx
 
 logger = logging.getLogger(__name__)
+
+_GEO_CACHE_TTL_SECONDS = 86400
+_geo_cache: dict[str, tuple[GeoResult, float]] = {}
 
 
 @dataclass(frozen=True)
@@ -23,11 +27,7 @@ def country_flag(country_code: str | None) -> str:
     return "".join(chr(0x1F1E6 + ord(char) - ord("A")) for char in code)
 
 
-def lookup_geo(ip: str) -> GeoResult | None:
-    ip = ip.strip()
-    if not ip:
-        return None
-
+def _lookup_geo_uncached(ip: str) -> GeoResult | None:
     try:
         with httpx.Client(timeout=5.0) as client:
             response = client.get(
@@ -53,3 +53,23 @@ def lookup_geo(ip: str) -> GeoResult | None:
         logger.debug("ipinfo lookup failed for %s: %s", ip, exc)
 
     return None
+
+
+def lookup_geo(ip: str) -> GeoResult | None:
+    ip = ip.strip()
+    if not ip:
+        return None
+
+    cached = _geo_cache.get(ip)
+    now = time.time()
+    if cached and now - cached[1] < _GEO_CACHE_TTL_SECONDS:
+        return cached[0]
+
+    result = _lookup_geo_uncached(ip)
+    if result:
+        _geo_cache[ip] = (result, now)
+    return result
+
+
+def clear_geo_cache() -> None:
+    _geo_cache.clear()

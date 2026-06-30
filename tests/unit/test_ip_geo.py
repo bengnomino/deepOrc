@@ -12,6 +12,9 @@ def test_country_flag():
 
 
 def test_lookup_geo_ip_api_success():
+    from orchestrator.services import ip_geo
+
+    ip_geo.clear_geo_cache()
     response = MagicMock()
     response.raise_for_status = MagicMock()
     response.json.return_value = {
@@ -28,9 +31,15 @@ def test_lookup_geo_ip_api_success():
     assert result is not None
     assert result.ip == "8.8.8.8"
     assert result.country_code == "US"
+    cached = lookup_geo("8.8.8.8")
+    assert cached == result
+    assert client.get.call_count == 1
 
 
 def test_lookup_geo_falls_back_to_ipinfo():
+    from orchestrator.services import ip_geo
+
+    ip_geo.clear_geo_cache()
     fail_response = MagicMock()
     fail_response.raise_for_status = MagicMock()
     fail_response.json.return_value = {"status": "fail", "message": "private range"}

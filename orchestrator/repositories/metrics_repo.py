@@ -21,6 +21,7 @@ class MetricsRepository:
         exit_node_reachable: bool | None,
         egress_public_ip: str | None = None,
         egress_country_code: str | None = None,
+        egress_updated_at: datetime | None = None,
     ) -> GatewayMetric:
         metric = GatewayMetric(
             gateway_id=gateway_id,
@@ -30,6 +31,7 @@ class MetricsRepository:
             exit_node_reachable=exit_node_reachable,
             egress_public_ip=egress_public_ip,
             egress_country_code=egress_country_code,
+            egress_updated_at=egress_updated_at,
             polled_at=datetime.now(UTC),
         )
         self._session.add(metric)
@@ -59,6 +61,17 @@ class MetricsRepository:
             select(GatewayMetric)
             .where(GatewayMetric.gateway_id == gateway_id)
             .order_by(GatewayMetric.polled_at.desc())
+            .limit(1)
+        ).first()
+
+    def latest_gateway_metric_with_egress(self, gateway_id: int) -> GatewayMetric | None:
+        return self._session.scalars(
+            select(GatewayMetric)
+            .where(
+                GatewayMetric.gateway_id == gateway_id,
+                GatewayMetric.egress_public_ip.is_not(None),
+            )
+            .order_by(GatewayMetric.egress_updated_at.desc(), GatewayMetric.polled_at.desc())
             .limit(1)
         ).first()
 

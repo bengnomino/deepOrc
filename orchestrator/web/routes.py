@@ -106,6 +106,7 @@ def _gateway_row(
     import ipaddress
 
     metric = metrics_repo.latest_gateway_metric(gateway.id)
+    egress_metric = metrics_repo.latest_gateway_metric_with_egress(gateway.id)
     peers = peers_repo.list_by_gateway(gateway.id)
     peer_metrics = {peer.id: metrics_repo.latest_peer_metric(peer.id) for peer in peers}
     peer_online = sum(
@@ -118,8 +119,14 @@ def _gateway_row(
             wg_gateway_ip = str(ipaddress.ip_network(gateway.wg_subnet).network_address + 1)
         except ValueError:
             wg_gateway_ip = None
-    egress_public_ip = metric.egress_public_ip if metric else None
-    egress_country_code = metric.egress_country_code if metric else None
+    egress_public_ip = None
+    egress_country_code = None
+    if metric and metric.egress_public_ip:
+        egress_public_ip = metric.egress_public_ip
+        egress_country_code = metric.egress_country_code
+    elif egress_metric:
+        egress_public_ip = egress_metric.egress_public_ip
+        egress_country_code = egress_metric.egress_country_code
     return {
         "gateway": gateway,
         "display_name": gateway_headscale_display_name(gateway, exit_node),
