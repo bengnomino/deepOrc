@@ -271,8 +271,6 @@ def create_peer_group_ui(
     name: str = Form(...),
     worker_id: int = Form(...),
     lan_start_ip: str = Form(...),
-    lan_subnet: str = Form(""),
-    lan_gateway: str = Form(""),
     parent_iface: str = Form(""),
 ) -> RedirectResponse:
     service = PeerGroupService(session)
@@ -282,8 +280,6 @@ def create_peer_group_ui(
                 name=name.strip(),
                 worker_id=worker_id,
                 lan_start_ip=lan_start_ip.strip(),
-                lan_subnet=lan_subnet.strip() or None,
-                lan_gateway=lan_gateway.strip() or None,
                 parent_iface=parent_iface.strip() or None,
             )
         )
