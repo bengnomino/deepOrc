@@ -31,6 +31,10 @@ def _lan_prefix_len(group: PeerGroup) -> int:
     return ipaddress.ip_network(group.lan_subnet, strict=False).prefixlen
 
 
+def _lan_network_cidr(group: PeerGroup) -> str:
+    return str(ipaddress.ip_network(group.lan_subnet, strict=False))
+
+
 def _valid_wg_conf(conf: str | None) -> bool:
     if not conf or not conf.strip():
         return False
@@ -56,6 +60,7 @@ def render_exit_host_script(
     parent = group.parent_iface or "ens18"
     lan_gw = group.lan_gateway or default_lan_gateway(group.lan_subnet)
     prefix_len = _lan_prefix_len(group)
+    lan_network = _lan_network_cidr(group)
     ready_count = sum(
         1 for gw, conf in entries if gw.status == GatewayStatus.READY and _valid_wg_conf(conf)
     )
@@ -108,7 +113,7 @@ def render_exit_host_script(
             f"ip link set {mac} up",
             f"grep -q '^{table} ' /etc/iproute2/rt_tables 2>/dev/null || echo '{table} deeporc-{slot}' >> /etc/iproute2/rt_tables",
             f"ip route replace default via \"${{LAN_GW}}\" dev {mac} table {table}",
-            f"ip route replace {lan_ip}/{prefix_len} dev {mac} scope link table {table}",
+            f"ip route replace {lan_network} dev {mac} scope link table {table}",
             f"ip rule del from {lan_ip}/32 lookup {table} 2>/dev/null || true",
             f"ip rule add pref {32000 + slot} from {lan_ip}/32 lookup {table}",
             f"ip rule del iif {wg_if} lookup {table} 2>/dev/null || true",

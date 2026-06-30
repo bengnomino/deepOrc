@@ -27,7 +27,7 @@ ip link set "${MAC}" up
 mkdir -p /etc/iproute2
 grep -q "^${TABLE} " /etc/iproute2/rt_tables 2>/dev/null || echo "${TABLE} deeporc-${SLOT}" >> /etc/iproute2/rt_tables
 ip route replace default via "${LAN_GW}" dev "${MAC}" table "${TABLE}"
-ip route replace "${LAN_IP}/24" dev "${MAC}" scope link table "${TABLE}"
+ip route replace "192.168.13.0/24" dev "${MAC}" scope link table "${TABLE}"
 
 ip rule del from "${LAN_IP}/32" lookup "${TABLE}" 2>/dev/null || true
 ip rule add pref $((32000 + SLOT)) from "${LAN_IP}/32" lookup "${TABLE}"
