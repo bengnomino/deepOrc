@@ -1,0 +1,42 @@
+<article class="gateway-tile gateway-tile-compact{% if row.gateway.status.value == 'deleting' %} gateway-tile-deleting{% endif %}">
+  <div class="gateway-tile-body">
+    <div class="gateway-tile-top">
+      {% if row.gateway.status.value == 'deleting' %}
+      <span class="gateway-name">{{ row.display_name }}</span>
+      {% else %}
+      <a href="/orchestrator/ui/gateways/{{ row.gateway.id }}" class="gateway-name">{{ row.display_name }}</a>
+      {% endif %}
+      <span class="status-pill status-{{ row.gateway.status.value }}">
+        {% if row.gateway.status.value == 'deleting' %}deleting{% else %}{{ row.gateway.status.value }}{% endif %}
+      </span>
+    </div>
+    <div class="gateway-metrics">
+      <div class="gateway-metric">
+        <span class="gateway-metric-label">WG UPLINK</span>
+        <div class="gateway-metric-row">
+          <span class="metric-dot{% if row.wg_online %} on{% endif %}" title="WireGuard"></span>
+          <span class="gateway-metric-value">{{ row.peer_online }}/{{ row.peer_total }}</span>
+        </div>
+      </div>
+      <div class="gateway-metric">
+        <span class="gateway-metric-label">TS NODE</span>
+        <div class="gateway-metric-row">
+          <span class="metric-dot{% if row.tailscale_online %} on{% endif %}" title="Tailscale"></span>
+        </div>
+        {% if row.gateway.exit_node_id != 'pending' %}
+        <code class="gateway-metric-ip">{{ row.gateway.exit_node_id }}</code>
+        {% else %}
+        <span class="gateway-metric-ip muted">pending</span>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  {% if row.gateway.status.value != 'deleting' %}
+  <a href="/orchestrator/ui/gateways/{{ row.gateway.id }}" class="gateway-tile-open btn btn-glow">Open</a>
+  {% endif %}
+  {% if row.gateway.status.value == 'deleting' %}
+  <div class="gateway-tile-overlay" aria-live="polite">
+    <span class="gateway-tile-overlay-label">Deleting</span>
+  </div>
+  {% endif %}
+</article>

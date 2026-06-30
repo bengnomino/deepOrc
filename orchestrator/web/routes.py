@@ -146,8 +146,12 @@ def _dashboard_workers(session: DbSession) -> tuple[list[dict], list, str | None
 
     sections = []
     for row in worker_service.dashboard_workers():
-        gateway_rows = [
-            _gateway_row(
+        gateway_rows_by_group: dict[int, list] = {}
+        orphan_gateway_rows: list = []
+        for gateway in gateways:
+            if gateway.worker_id != row["worker"].id:
+                continue
+            gateway_row = _gateway_row(
                 gateway,
                 gs=gs,
                 metrics_repo=metrics_repo,
@@ -155,15 +159,25 @@ def _dashboard_workers(session: DbSession) -> tuple[list[dict], list, str | None
                 exit_nodes_by_ip=exit_nodes_by_ip,
                 exit_nodes_by_hostname=exit_nodes_by_hostname,
             )
-            for gateway in gateways
-            if gateway.worker_id == row["worker"].id
+            if gateway.peer_group_id:
+                gateway_rows_by_group.setdefault(gateway.peer_group_id, []).append(gateway_row)
+            else:
+                orphan_gateway_rows.append(gateway_row)
+
+        worker_groups = groups_by_worker.get(row["worker"].id, [])
+        peer_group_sections = [
+            {
+                "group": group,
+                "gateways": gateway_rows_by_group.get(group.id, []),
+            }
+            for group in worker_groups
         ]
         sections.append(
             {
                 "worker": row["worker"],
                 "status": row["status"],
-                "gateways": gateway_rows,
-                "peer_groups": groups_by_worker.get(row["worker"].id, []),
+                "peer_group_sections": peer_group_sections,
+                "orphan_gateways": orphan_gateway_rows,
             }
         )
     return sections, unassigned, headscale_error
@@ -303,6 +317,28 @@ def peer_group_detail(
     if not group:
         return RedirectResponse(url="/orchestrator/ui", status_code=303)
     gateways = [g for g in GatewayRepository(session).list_all() if g.peer_group_id == group_id]
+    gs = GatewayService(session)
+    metrics_repo = MetricsRepository(session)
+    peers_repo = PeerRepository(session)
+    exit_nodes_by_ip: dict = {}
+    exit_nodes_by_hostname: dict = {}
+    try:
+        hs_nodes = list_exit_nodes()
+        exit_nodes_by_ip = {node.tailscale_ip: node for node in hs_nodes}
+        exit_nodes_by_hostname = {node.hostname: node for node in hs_nodes}
+    except HeadscaleError:
+        pass
+    gateway_rows = [
+        _gateway_row(
+            gateway,
+            gs=gs,
+            metrics_repo=metrics_repo,
+            peers_repo=peers_repo,
+            exit_nodes_by_ip=exit_nodes_by_ip,
+            exit_nodes_by_hostname=exit_nodes_by_hostname,
+        )
+        for gateway in gateways
+    ]
     try:
         _, host_setup_script = ExitHostScriptService(session).build_setup_script(group_id)
     except ValueError:
@@ -313,7 +349,7 @@ def peer_group_detail(
         {
             "title": group.name,
             "group": group,
-            "gateways": gateways,
+            "gateway_rows": gateway_rows,
             "lan_remaining": remaining_lan_capacity(session, group),
             "host_setup_script": host_setup_script,
             "flash_error": error,

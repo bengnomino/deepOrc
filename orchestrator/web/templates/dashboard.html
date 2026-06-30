@@ -35,10 +35,10 @@
       <span class="muted chip-meta">{{ reg.created_at }}</span>
       <div class="chip-actions">
         <form method="post" action="/orchestrator/ui/registrations/{{ reg.registration_key }}/approve">
-          <button type="submit" class="btn btn-sm btn-glow">Approve</button>
+          <button type="submit" class="btn btn-glow">Approve</button>
         </form>
         <form method="post" action="/orchestrator/ui/registrations/{{ reg.registration_key }}/reject">
-          <button type="submit" class="btn btn-sm btn-ghost">Reject</button>
+          <button type="submit" class="btn btn-ghost">Reject</button>
         </form>
       </div>
     </div>
@@ -83,13 +83,13 @@
     </h2>
     <div class="worker-head-actions">
       {% if section.status.value == 'online' %}
-      <button type="button" class="btn btn-sm btn-ghost btn-new-peer-group-worker" data-worker-id="{{ section.worker.id }}">Peer group</button>
-      <a href="/orchestrator/ui/workers/{{ section.worker.id }}/create-gateway" class="btn btn-sm btn-glow">
+      <button type="button" class="btn btn-ghost btn-new-peer-group-worker" data-worker-id="{{ section.worker.id }}">Peer group</button>
+      <a href="/orchestrator/ui/workers/{{ section.worker.id }}/create-gateway" class="btn btn-glow">
         Create gateway
       </a>
       {% else %}
-      <span class="btn btn-sm btn-ghost is-disabled" title="Worker offline">Peer group</span>
-      <span class="btn btn-sm btn-glow is-disabled" title="Worker offline">Create gateway</span>
+      <span class="btn btn-ghost is-disabled" title="Worker offline">Peer group</span>
+      <span class="btn btn-glow is-disabled" title="Worker offline">Create gateway</span>
       {% endif %}
     </div>
   </div>
@@ -117,75 +117,45 @@
     </div>
   </div>
 
-  {% if section.peer_groups %}
+  {% if section.peer_group_sections or section.orphan_gateways %}
   <div class="worker-peer-groups">
-    <h3 class="section-sub">Peer groups</h3>
-    <div class="peer-group-grid">
-      {% for group in section.peer_groups %}
-      <a href="/orchestrator/ui/peer-groups/{{ group.id }}" class="peer-group-tile">
-        <span class="peer-group-tile-name">{{ group.name }}</span>
-        <span class="peer-group-tile-count muted">
-          {{ group.gateways|length }} gateway{% if group.gateways|length != 1 %}s{% endif %}
-        </span>
-        <span class="peer-group-tile-meta muted">
-          from <code>{{ group.lan_start_ip }}</code>
-        </span>
-      </a>
-      {% endfor %}
-    </div>
-  </div>
-  {% endif %}
-
-  {% if section.gateways %}
-  <div class="gateway-grid worker-gateway-grid">
-    {% for row in section.gateways %}
-    <article class="gateway-tile{% if row.gateway.status.value == 'deleting' %} gateway-tile-deleting{% endif %}">
-      <div class="gateway-tile-body">
-        <div class="gateway-tile-top">
-          {% if row.gateway.status.value == 'deleting' %}
-          <span class="gateway-name">{{ row.display_name }}</span>
-          {% else %}
-          <a href="/orchestrator/ui/gateways/{{ row.gateway.id }}" class="gateway-name">{{ row.display_name }}</a>
-          {% endif %}
-          <span class="gateway-object-id muted" title="Object ID">{{ row.gateway.name }}</span>
-          <span class="status-pill status-{{ row.gateway.status.value }}">
-            {% if row.gateway.status.value == 'deleting' %}deleting{% else %}{{ row.gateway.status.value }}{% endif %}
-          </span>
+    {% for pg in section.peer_group_sections %}
+    <article class="peer-group-card">
+      <div class="peer-group-card-head">
+        <div class="peer-group-card-title-wrap">
+          <a href="/orchestrator/ui/peer-groups/{{ pg.group.id }}" class="peer-group-card-title">{{ pg.group.name }}</a>
+          <span class="peer-group-card-meta muted">from <code>{{ pg.group.lan_start_ip }}</code></span>
         </div>
-        <div class="signal-row">
-          <span class="signal {% if row.tailscale_online %}on{% endif %}" title="Tailscale">TS</span>
-          <span class="signal {% if row.wg_online %}on{% endif %}" title="WireGuard">WG</span>
-          <span class="signal {% if row.peer_online %}on{% endif %}" title="Backhaul peer">{{ row.peer_online }}/{{ row.peer_total }}</span>
-        </div>
-        {% if row.gateway.exit_node_id != 'pending' %}
-        <div class="gateway-exit-callout">
-          <div class="gateway-exit-callout-head">
-            <span class="gateway-exit-callout-icon" aria-hidden="true">↗</span>
-            <span class="gateway-exit-callout-name">Exit: {{ row.display_name }}</span>
-            {% if row.exit_node %}
-            <span class="status-pill {% if row.exit_node.online %}online{% else %}offline{% endif %}">
-              {% if row.exit_node.online %}online{% else %}offline{% endif %}
-            </span>
-            {% endif %}
-          </div>
-          <code class="gateway-exit-callout-ip">{{ row.gateway.exit_node_id }}</code>
-        </div>
-        {% endif %}
+        <span class="peer-group-card-count muted">{{ pg.gateways|length }} gateway{% if pg.gateways|length != 1 %}s{% endif %}</span>
       </div>
-      {% if row.gateway.status.value != 'deleting' %}
-      <a href="/orchestrator/ui/gateways/{{ row.gateway.id }}" class="gateway-tile-open btn btn-glow">Open</a>
-      {% endif %}
-      {% if row.gateway.status.value == 'deleting' %}
-      <div class="gateway-tile-overlay" aria-live="polite">
-        <span class="gateway-tile-overlay-label">Deleting</span>
+      {% if pg.gateways %}
+      <div class="gateway-grid gateway-grid-compact">
+        {% for row in pg.gateways %}
+        {% include "gateway_tile.html" %}
+        {% endfor %}
       </div>
+      {% else %}
+      <p class="muted peer-group-card-empty">No gateways in this group.</p>
       {% endif %}
     </article>
     {% endfor %}
+
+    {% if section.orphan_gateways %}
+    <article class="peer-group-card peer-group-card-orphan">
+      <div class="peer-group-card-head">
+        <span class="peer-group-card-title">Ungrouped gateways</span>
+      </div>
+      <div class="gateway-grid gateway-grid-compact">
+        {% for row in section.orphan_gateways %}
+        {% include "gateway_tile.html" %}
+        {% endfor %}
+      </div>
+    </article>
+    {% endif %}
   </div>
   {% else %}
   <div class="empty-state worker-empty">
-    <p class="muted">No gateways on this worker.</p>
+    <p class="muted">No peer groups or gateways on this worker.</p>
   </div>
   {% endif %}
 </section>
@@ -262,14 +232,14 @@
         Tailscale auth key
         <div class="copy-row">
           <input id="worker-enroll-key" readonly>
-          <button type="button" class="btn btn-sm" id="worker-enroll-copy-key">Copy</button>
+          <button type="button" class="btn btn-copy" id="worker-enroll-copy-key">Copy</button>
         </div>
       </label>
       <label class="field-label">
         Command
         <div class="copy-row">
           <textarea id="worker-enroll-command" rows="8" readonly></textarea>
-          <button type="button" class="btn btn-sm" id="worker-enroll-copy-cmd">Copy</button>
+          <button type="button" class="btn btn-copy" id="worker-enroll-copy-cmd">Copy</button>
         </div>
       </label>
     </div>
@@ -290,14 +260,14 @@
         Auth key
         <div class="copy-row">
           <input id="exit-node-key" readonly>
-          <button type="button" class="btn btn-sm" id="exit-node-copy-key">Copy</button>
+          <button type="button" class="btn btn-copy" id="exit-node-copy-key">Copy</button>
         </div>
       </label>
       <label class="field-label">
         Command
         <div class="copy-row">
           <textarea id="exit-node-command" rows="3" readonly></textarea>
-          <button type="button" class="btn btn-sm" id="exit-node-copy-cmd">Copy</button>
+          <button type="button" class="btn btn-copy" id="exit-node-copy-cmd">Copy</button>
         </div>
       </label>
     </div>

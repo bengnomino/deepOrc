@@ -8,7 +8,7 @@
   </div>
   <div class="header-actions">
     <a href="/orchestrator/ui/exit-host-cleanup.sh" class="btn btn-ghost">Cleanup script</a>
-    {% if gateways %}
+    {% if gateway_rows %}
     <button type="button" class="btn btn-glow" id="btn-host-setup">Exit host script</button>
     <a href="/orchestrator/ui/peer-groups/{{ group.id }}/host-setup.sh" class="btn btn-ghost">Download .sh</a>
     {% endif %}
@@ -41,26 +41,15 @@
     {% if lan_remaining > 0 %}
     <form method="post" action="/orchestrator/ui/peer-groups/{{ group.id }}/gateways" class="gateway-create-form">
       <input type="number" name="count" min="1" max="{{ lan_remaining }}" value="1" class="text-input text-input-sm gateway-create-count" aria-label="Number of gateways to create">
-      <button type="submit" class="btn btn-glow btn-sm">Create</button>
+      <button type="submit" class="btn btn-glow">Create</button>
     </form>
     {% endif %}
   </div>
 
-  {% if gateways %}
-  <div class="gateway-grid worker-gateway-grid" style="margin-top:1rem">
-    {% for gateway in gateways %}
-    <article class="gateway-tile">
-      <div class="gateway-tile-body">
-        <div class="gateway-tile-top">
-          <a href="/orchestrator/ui/gateways/{{ gateway.id }}" class="gateway-name">{{ gateway.name }}</a>
-          <span class="status-pill status-{{ gateway.status.value }}">{{ gateway.status.value }}</span>
-        </div>
-        {% if gateway.lan_ip %}
-        <div class="muted">LAN <code>{{ gateway.lan_ip }}</code>{% if gateway.macvlan_slot %} · mac_{{ gateway.macvlan_slot }}{% endif %}</div>
-        {% endif %}
-      </div>
-      <a href="/orchestrator/ui/gateways/{{ gateway.id }}" class="gateway-tile-open btn btn-glow">Open</a>
-    </article>
+  {% if gateway_rows %}
+  <div class="gateway-grid gateway-grid-compact">
+    {% for row in gateway_rows %}
+    {% include "gateway_tile.html" %}
     {% endfor %}
   </div>
   {% else %}
@@ -68,7 +57,7 @@
   {% endif %}
 </section>
 
-{% if gateways and host_setup_script %}
+{% if gateway_rows and host_setup_script %}
 <dialog id="host-setup-modal" class="modal">
   <div class="modal-card modal-card-wide">
     <div class="modal-header">
@@ -87,7 +76,7 @@
 {% endblock %}
 
 {% block scripts %}
-{% if gateways and host_setup_script %}
+{% if gateway_rows and host_setup_script %}
 <script>
 (() => {
   const modal = document.getElementById("host-setup-modal");
