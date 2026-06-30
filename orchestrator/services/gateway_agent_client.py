@@ -118,6 +118,40 @@ class GatewayAgentClient:
             raise last_err
         return {"status": ""}
 
+    def egress_public_ip(self) -> dict[str, Any]:
+        last_err: Exception | None = None
+        try:
+            return self._request("GET", "/v1/egress/public-ip")
+        except httpx.HTTPStatusError as exc:
+            last_err = exc
+            if exc.response.status_code not in {404, 503} or not self._incus_instance:
+                raise
+        except Exception as exc:
+            last_err = exc
+        if self._incus_instance:
+            return self._egress_public_ip_via_incus()
+        if last_err is not None:
+            raise last_err
+        return {"ip": ""}
+
+    def _egress_public_ip_via_incus(self) -> dict[str, Any]:
+        if not self._incus_instance:
+            raise RuntimeError("incus instance required for direct egress ip lookup")
+        script = (
+            "for u in https://api.ipify.org https://ifconfig.me/ip; do "
+            'ip=$(wget -qO- -T 10 "$u" 2>/dev/null | head -1); '
+            'case "$ip" in *.*.*.*) echo "$ip"; exit 0 ;; esac; '
+            "done; exit 1"
+        )
+        cmd = ["incus", "exec", self._incus_instance, "--", "sh", "-c", script]
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=60, check=False)
+        if result.returncode != 0:
+            raise RuntimeError(
+                result.stderr.strip() or result.stdout.strip() or "egress ip lookup failed"
+            )
+        ip = result.stdout.strip().splitlines()[0].strip()
+        return {"ip": ip}
+
     def _tailscale_status_via_incus(self) -> dict[str, Any]:
         if not self._incus_instance:
             raise RuntimeError("incus instance required for direct tailscale status")

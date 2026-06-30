@@ -19,6 +19,8 @@ class MetricsRepository:
         tailscale_online: bool | None,
         wg_online: bool | None,
         exit_node_reachable: bool | None,
+        egress_public_ip: str | None = None,
+        egress_country_code: str | None = None,
     ) -> GatewayMetric:
         metric = GatewayMetric(
             gateway_id=gateway_id,
@@ -26,6 +28,8 @@ class MetricsRepository:
             tailscale_online=tailscale_online,
             wg_online=wg_online,
             exit_node_reachable=exit_node_reachable,
+            egress_public_ip=egress_public_ip,
+            egress_country_code=egress_country_code,
             polled_at=datetime.now(UTC),
         )
         self._session.add(metric)

@@ -65,6 +65,31 @@ def exit_node_configured() -> bool:
         return "advertiseexitnode" in result.stdout.replace(" ", "").lower()
 
 
+def fetch_egress_public_ip() -> str:
+    """Public IPv4 as seen from the gateway default route (exit path)."""
+    import ipaddress
+
+    errors: list[str] = []
+    for url in ("https://api.ipify.org", "https://ifconfig.me/ip"):
+        result = subprocess.run(
+            ["wget", "-qO-", "-T", "10", url],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if result.returncode != 0:
+            errors.append(result.stderr.strip() or result.stdout.strip() or url)
+            continue
+        candidate = result.stdout.strip().splitlines()[0].strip()
+        try:
+            ipaddress.ip_address(candidate)
+        except ValueError:
+            errors.append(f"invalid response from {url}: {candidate!r}")
+            continue
+        return candidate
+    raise RuntimeError(errors[-1] if errors else "egress ip lookup failed")
+
+
 def collect_health(interface: str = "wg0") -> HealthStatus:
     return HealthStatus(
         wg_online=interface_up(interface),

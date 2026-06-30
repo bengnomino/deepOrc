@@ -28,6 +28,7 @@ from orchestrator.repositories.peer_repo import PeerRepository
 from orchestrator.services.exit_host_script_service import ExitHostScriptService
 from orchestrator.services.gateway_service import CreateGatewayRequest, GatewayService
 from orchestrator.services.peer_group_service import CreatePeerGroupRequest, PeerGroupService
+from orchestrator.services.ip_geo import country_flag
 from orchestrator.services.peer_service import PeerService
 from orchestrator.services.worker_service import WorkerService
 from orchestrator.web.views import (
@@ -102,6 +103,8 @@ def _gateway_row(
     exit_nodes_by_ip: dict,
     exit_nodes_by_hostname: dict,
 ) -> dict:
+    import ipaddress
+
     metric = metrics_repo.latest_gateway_metric(gateway.id)
     peers = peers_repo.list_by_gateway(gateway.id)
     peer_metrics = {peer.id: metrics_repo.latest_peer_metric(peer.id) for peer in peers}
@@ -109,15 +112,27 @@ def _gateway_row(
         1 for peer in peers if peer_is_online(peer, peer_metrics.get(peer.id))
     )
     exit_node = match_gateway_exit_node(gateway, exit_nodes_by_ip, exit_nodes_by_hostname)
+    wg_gateway_ip = None
+    if gateway.wg_subnet and gateway.wg_subnet != "pending":
+        try:
+            wg_gateway_ip = str(ipaddress.ip_network(gateway.wg_subnet).network_address + 1)
+        except ValueError:
+            wg_gateway_ip = None
+    egress_public_ip = metric.egress_public_ip if metric else None
+    egress_country_code = metric.egress_country_code if metric else None
     return {
         "gateway": gateway,
         "display_name": gateway_headscale_display_name(gateway, exit_node),
         "endpoint": gs.get_endpoint(gateway),
+        "wg_gateway_ip": wg_gateway_ip,
         "tailscale_online": metric.tailscale_online if metric else None,
         "wg_online": metric.wg_online if metric else None,
         "exit_node": exit_node,
         "peer_total": len(peers),
         "peer_online": peer_online,
+        "egress_public_ip": egress_public_ip,
+        "egress_country_code": egress_country_code,
+        "egress_flag": country_flag(egress_country_code),
     }
 
 

@@ -7,7 +7,7 @@ from fastapi import Depends, FastAPI, Header, HTTPException, status
 from pydantic import BaseModel, Field
 
 from gateway_agent.config import AgentSettings, get_agent_settings
-from gateway_agent.health import collect_health, tailscale_status_text
+from gateway_agent.health import collect_health, fetch_egress_public_ip, tailscale_status_text
 from gateway_agent.nft_handler import resume_peer_ip, suspend_peer_ip
 from gateway_agent.tailscale_handler import advertise_exit_node, restore_exit_node_routing, set_tailscale_hostname
 from gateway_agent.wg_handler import add_peer, get_config, list_peers, remove_peer
@@ -32,6 +32,10 @@ class HealthResponse(BaseModel):
     tailscale_online: bool
     nft_running: bool
     exit_node_configured: bool
+
+
+class EgressPublicIpResponse(BaseModel):
+    ip: str
 
 
 class TailscaleStatusResponse(BaseModel):
@@ -129,6 +133,16 @@ def create_app() -> FastAPI:
     @app.get("/v1/wg/config")
     def wg_config(_: None = Depends(verify_token)) -> dict[str, str]:
         return {"config": get_config(settings.wg_interface)}
+
+    @app.get("/v1/egress/public-ip", response_model=EgressPublicIpResponse)
+    def egress_public_ip(_: None = Depends(verify_token)) -> EgressPublicIpResponse:
+        try:
+            return EgressPublicIpResponse(ip=fetch_egress_public_ip())
+        except RuntimeError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=str(exc),
+            ) from exc
 
     @app.get("/v1/tailscale/status", response_model=TailscaleStatusResponse)
     def tailscale_status(_: None = Depends(verify_token)) -> TailscaleStatusResponse:

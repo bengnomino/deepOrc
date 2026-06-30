@@ -17,6 +17,8 @@ class GatewayMetric(Base):
     tailscale_online: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     wg_online: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     exit_node_reachable: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    egress_public_ip: Mapped[str | None] = mapped_column(String(45), nullable=True)
+    egress_country_code: Mapped[str | None] = mapped_column(String(2), nullable=True)
     polled_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

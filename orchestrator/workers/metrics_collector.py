@@ -13,9 +13,27 @@ from orchestrator.repositories.gateway_repo import GatewayRepository
 from orchestrator.repositories.metrics_repo import MetricsRepository
 from orchestrator.repositories.peer_repo import PeerRepository
 from orchestrator.services.gateway_agent_client import GatewayAgentClient
+from orchestrator.services.ip_geo import lookup_geo
 from orchestrator.services.worker_service import WorkerService
 
 logger = logging.getLogger(__name__)
+
+_EGRESS_REFRESH_SECONDS = 3600
+
+
+def _egress_geo_from_agent(agent: GatewayAgentClient) -> tuple[str | None, str | None]:
+    try:
+        payload = agent.egress_public_ip()
+        ip = (payload.get("ip") or "").strip()
+        if not ip:
+            return None, None
+        geo = lookup_geo(ip)
+        if geo:
+            return geo.ip, geo.country_code
+        return ip, None
+    except Exception as exc:
+        logger.debug("egress geo lookup failed: %s", exc)
+        return None, None
 
 
 def collect_metrics(session: Session) -> int:
@@ -42,6 +60,8 @@ def collect_metrics(session: Session) -> int:
             tailscale_online = None
             wg_online = None
             exit_node_reachable = None
+            egress_public_ip = None
+            egress_country_code = None
 
             try:
                 token = decrypt_value(gateway.agent_token_enc)
@@ -51,6 +71,15 @@ def collect_metrics(session: Session) -> int:
                 tailscale_online = health.get("tailscale_online")
                 wg_online = health.get("wg_online")
                 exit_node_reachable = health.get("exit_node_configured")
+
+                latest = metrics_repo.latest_gateway_metric(gateway.id)
+                if latest and latest.egress_public_ip:
+                    age = (datetime.now(UTC) - latest.polled_at).total_seconds()
+                    if age < _EGRESS_REFRESH_SECONDS:
+                        egress_public_ip = latest.egress_public_ip
+                        egress_country_code = latest.egress_country_code
+                if egress_public_ip is None:
+                    egress_public_ip, egress_country_code = _egress_geo_from_agent(agent)
 
                 peer_stats = {p["public_key"]: p for p in agent.list_peers()}
                 for peer in peers_repo.list_by_gateway(gateway.id):
@@ -74,6 +103,8 @@ def collect_metrics(session: Session) -> int:
                 tailscale_online,
                 wg_online,
                 exit_node_reachable,
+                egress_public_ip=egress_public_ip,
+                egress_country_code=egress_country_code,
             )
             count += 1
 
