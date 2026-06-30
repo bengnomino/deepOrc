@@ -814,6 +814,28 @@ body {
   border-top: 1px solid var(--border);
 }
 
+.gateways-head {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.gateways-head h2 {
+  margin: 0;
+}
+
+.gateway-create-form {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+}
+
+.gateway-create-count {
+  width: 4rem;
+}
+
 .inline-form {
   display: flex;
   gap: 0.5rem;

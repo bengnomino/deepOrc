@@ -38,20 +38,18 @@
 </section>
 
 <section class="card card-glass">
-  <div class="card-head row-head">
+  <div class="card-head gateways-head">
     <h2>Gateways</h2>
+    {% if lan_remaining > 0 %}
+    <form method="post" action="/orchestrator/ui/peer-groups/{{ group.id }}/gateways" class="gateway-create-form">
+      <label class="field-label inline">
+        Create
+        <input type="number" name="count" min="1" max="{{ lan_remaining }}" value="1" class="text-input text-input-sm gateway-create-count">
+      </label>
+      <button type="submit" class="btn btn-glow btn-sm">Create</button>
+    </form>
+    {% endif %}
   </div>
-
-  {% if lan_remaining > 0 %}
-  <form method="post" action="/orchestrator/ui/peer-groups/{{ group.id }}/gateways" class="inline-form row-head">
-    <label class="field-label inline">
-      Create
-      <input type="number" name="count" min="1" max="{{ lan_remaining }}" value="1" class="text-input text-input-sm" style="width:4rem">
-      gateway(s)
-    </label>
-    <button type="submit" class="btn btn-glow btn-sm">Create</button>
-  </form>
-  {% endif %}
 
   {% if gateways %}
   <div class="gateway-grid worker-gateway-grid" style="margin-top:1rem">
