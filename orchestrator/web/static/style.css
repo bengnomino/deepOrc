@@ -211,6 +211,58 @@ body {
   align-items: center;
 }
 
+.worker-head-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem;
+  flex-shrink: 0;
+}
+
+.worker-peer-groups {
+  margin-bottom: 1rem;
+}
+
+.peer-group-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 0.65rem;
+}
+
+.peer-group-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.75rem 0.9rem;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: rgba(7, 11, 18, 0.45);
+  text-decoration: none;
+  color: inherit;
+  transition: border-color 0.2s, transform 0.2s, background 0.2s;
+}
+
+.peer-group-tile:hover {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+  background: rgba(7, 11, 18, 0.65);
+  transform: translateY(-1px);
+}
+
+.peer-group-tile-name {
+  font-weight: 600;
+  font-size: 0.95rem;
+  letter-spacing: -0.01em;
+}
+
+.peer-group-tile-meta {
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+.peer-group-tile-meta code {
+  font-size: 0.78rem;
+}
+
 .worker-create-gateway-form {
   margin: 0;
   flex-shrink: 0;

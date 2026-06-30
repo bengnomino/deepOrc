@@ -140,6 +140,10 @@ def _dashboard_workers(session: DbSession) -> tuple[list[dict], list, str | None
         unassigned = []
         headscale_error = f"Could not read exit nodes from Headscale: {exc}"
 
+    groups_by_worker: dict[int, list] = {}
+    for group in PeerGroupService(session).list_groups():
+        groups_by_worker.setdefault(group.worker_id, []).append(group)
+
     sections = []
     for row in worker_service.dashboard_workers():
         gateway_rows = [
@@ -159,6 +163,7 @@ def _dashboard_workers(session: DbSession) -> tuple[list[dict], list, str | None
                 "worker": row["worker"],
                 "status": row["status"],
                 "gateways": gateway_rows,
+                "peer_groups": groups_by_worker.get(row["worker"].id, []),
             }
         )
     return sections, unassigned, headscale_error
@@ -189,14 +194,12 @@ def _pending_registrations(session: DbSession) -> list:
 def dashboard(request: Request, session: DbSession, error: str | None = None) -> HTMLResponse:
     workers, unassigned, headscale_error = _dashboard_workers(session)
     pending_regs = _pending_registrations(session)
-    peer_groups = PeerGroupService(session).list_groups()
     settings = get_settings()
     return templates.TemplateResponse(
         request,
         "dashboard.html",
         {
             "workers": workers,
-            "peer_groups": peer_groups,
             "worker_choices": _worker_choices(session),
             "worker_choices_json": json.dumps(_worker_choices(session)),
             "unassigned_exit_nodes": unassigned,

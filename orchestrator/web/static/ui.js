@@ -415,8 +415,16 @@
   }
 
   const peerGroupModal = document.getElementById("peer-group-modal");
-  const openPeerGroup = () => peerGroupModal?.showModal();
-  document.getElementById("btn-new-peer-group")?.addEventListener("click", openPeerGroup);
-  document.getElementById("btn-new-peer-group-inline")?.addEventListener("click", openPeerGroup);
+  const peerGroupWorkerSelect = peerGroupModal?.querySelector('select[name="worker_id"]');
+  const openPeerGroup = (workerId) => {
+    if (peerGroupWorkerSelect && workerId) {
+      peerGroupWorkerSelect.value = String(workerId);
+    }
+    peerGroupModal?.showModal();
+  };
+  document.getElementById("btn-new-peer-group")?.addEventListener("click", () => openPeerGroup());
+  document.querySelectorAll(".btn-new-peer-group-worker").forEach((btn) => {
+    btn.addEventListener("click", () => openPeerGroup(btn.dataset.workerId));
+  });
   wireDialogClose(peerGroupModal, document.getElementById("peer-group-modal-close"));
 })();

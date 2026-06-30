@@ -70,25 +70,6 @@
 </section>
 {% endif %}
 
-{% if peer_groups %}
-<section class="card card-glass">
-  <div class="card-head row-head">
-    <h2>Peer groups</h2>
-    <button type="button" class="btn btn-sm btn-glow" id="btn-new-peer-group-inline">New group</button>
-  </div>
-  <div class="chip-grid">
-    {% for group in peer_groups %}
-    <a href="/orchestrator/ui/peer-groups/{{ group.id }}" class="chip-card chip-card-link">
-      <strong>{{ group.name }}</strong>
-      <code>{{ group.lan_subnet }}</code>
-      <span class="muted">from {{ group.lan_start_ip }}</span>
-      <span class="muted">{{ group.gateways|length }} gateway(s)</span>
-    </a>
-    {% endfor %}
-  </div>
-</section>
-{% endif %}
-
 {% for section in workers %}
 <section class="card card-glass worker-section" data-worker-id="{{ section.worker.id }}">
   <div class="card-head worker-head row-head">
@@ -100,13 +81,17 @@
       {% endif %}
       {{ section.worker.display_name }}
     </h2>
-    {% if section.status.value == 'online' %}
-    <a href="/orchestrator/ui/workers/{{ section.worker.id }}/create-gateway" class="btn btn-sm btn-glow">
-      Create gateway
-    </a>
-    {% else %}
-    <span class="btn btn-sm btn-glow is-disabled" title="Worker offline">Create gateway</span>
-    {% endif %}
+    <div class="worker-head-actions">
+      {% if section.status.value == 'online' %}
+      <button type="button" class="btn btn-sm btn-ghost btn-new-peer-group-worker" data-worker-id="{{ section.worker.id }}">Peer group</button>
+      <a href="/orchestrator/ui/workers/{{ section.worker.id }}/create-gateway" class="btn btn-sm btn-glow">
+        Create gateway
+      </a>
+      {% else %}
+      <span class="btn btn-sm btn-ghost is-disabled" title="Worker offline">Peer group</span>
+      <span class="btn btn-sm btn-glow is-disabled" title="Worker offline">Create gateway</span>
+      {% endif %}
+    </div>
   </div>
 
   <div class="host-stats-grid host-stats-grid-compact worker-stats-grid">
@@ -131,6 +116,23 @@
       <div class="meter meter-spacer" aria-hidden="true"><span></span></div>
     </div>
   </div>
+
+  {% if section.peer_groups %}
+  <div class="worker-peer-groups">
+    <h3 class="section-sub">Peer groups</h3>
+    <div class="peer-group-grid">
+      {% for group in section.peer_groups %}
+      <a href="/orchestrator/ui/peer-groups/{{ group.id }}" class="peer-group-tile">
+        <span class="peer-group-tile-name">{{ group.name }}</span>
+        <span class="peer-group-tile-meta muted">
+          from <code>{{ group.lan_start_ip }}</code>
+          · {{ group.gateways|length }} gateway{% if group.gateways|length != 1 %}s{% endif %}
+        </span>
+      </a>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
 
   {% if section.gateways %}
   <div class="gateway-grid worker-gateway-grid">
@@ -233,10 +235,6 @@
     <label class="field-label">
       Start IP
       <input type="text" name="lan_start_ip" class="text-input" required placeholder="192.168.13.100">
-    </label>
-    <label class="field-label">
-      Subnet <span class="muted">(optional, default /24)</span>
-      <input type="text" name="lan_subnet" class="text-input" placeholder="192.168.13.0/24">
     </label>
     <label class="field-label">
       LAN gateway <span class="muted">(optional)</span>

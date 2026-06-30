@@ -26,7 +26,6 @@
   <h2>Peer group</h2>
   <dl class="meta-list vertical">
     <div><dt>Worker</dt><dd>{{ group.worker.display_name if group.worker else group.worker_id }}</dd></div>
-    <div><dt>LAN subnet</dt><dd><code>{{ group.lan_subnet }}</code></dd></div>
     <div><dt>Start IP</dt><dd><code>{{ group.lan_start_ip }}</code></dd></div>
     {% if group.lan_gateway %}
     <div><dt>LAN gateway</dt><dd><code>{{ group.lan_gateway }}</code></dd></div>
