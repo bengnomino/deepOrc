@@ -20,6 +20,43 @@ CP_ENV_FILE="${HOST_ENV:-$SCRIPT_DIR/hosts/host.env}"
 load_host_env "$CP_ENV_FILE"
 load_worker_env "$WORKER_ENV_FILE"
 
+# Validate SSH hostname if provided
+validate_ssh_hostname() {
+  local ssh_host="$1"
+  
+  # Extract user@host format
+  local host
+  if [[ "$ssh_host" == *"@"* ]]; then
+    host="${ssh_host#*@}"
+  else
+    host="$ssh_host"
+  fi
+  
+  # Check for command injection patterns
+  if echo "$host" | grep -qE '[\$\`|;&<>\n]'; then
+    echo "Invalid WORKER_SSH: potential command injection detected" >&2
+    return 1
+  fi
+  
+  # Validate hostname format (IP or domain)
+  if echo "$host" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$'; then
+    # Valid IPv4
+    return 0
+  elif echo "$host" | grep -qE '^[a-zA-Z0-9]([a-zA-Z0-9.-]*[a-zA-Z0-9])?$'; then
+    # Valid hostname
+    return 0
+  else
+    echo "Invalid WORKER_SSH: invalid hostname format" >&2
+    return 1
+  fi
+}
+
+if [[ -n "${WORKER_SSH:-}" ]]; then
+  if ! validate_ssh_hostname "$WORKER_SSH"; then
+    exit 1
+  fi
+fi
+
 REMOTE="${WORKER_NAME}"
 DISPLAY="${WORKER_DISPLAY_NAME:-${WORKER_NAME}}"
 

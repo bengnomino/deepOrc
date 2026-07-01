@@ -13,6 +13,7 @@ TS_IF=tailscale0
 
 PUBLIC_DNS="8.8.8.8 8.8.4.4 1.1.1.1 1.0.0.1"
 DOH_HOSTS="cloudflare-dns.com dns.google"
+
 RULE_WG_PEER=35
 RULE_WG_GW=40
 RULE_TS_SRC=45
@@ -23,8 +24,88 @@ RULE_DNS_BASE=52
 RULE_MAGICDNS=57
 RULE_WG_INGRESS=59
 
+# Validate environment variables to prevent command injection
+_validate_env_vars() {
+	# Validate HEADSCALE_URL
+	if [ -n "${HEADSCALE_URL:-}" ]; then
+		case "$HEADSCALE_URL" in
+			*'$'*|*'`'*|*'|'*|*';'*|*'<'*|*'>'*|*$'\n'*)
+				_log "ERROR: Invalid HEADSCALE_URL: contains command injection patterns"
+				return 1
+				;;
+		esac
+		# Extract host and validate it's a valid hostname/IP
+		local url_host="${HEADSCALE_URL#*://}"
+		url_host="${url_host%%/*}"
+		url_host="${url_host%%:*}"
+		case "$url_host" in
+			*[!a-zA-Z0-9.-]*)
+				_log "ERROR: Invalid HEADSCALE_URL: invalid hostname"
+				return 1
+				;;
+		esac
+	fi
+
+	# Validate DOH_HOSTS (DNS hosts)
+	for host in $DOH_HOSTS; do
+		case "$host" in
+			*'$'*|*'`'*|*'|'*|*';'*|*'<'*|*'>'*)
+				_log "ERROR: Invalid DOH_HOSTS: contains invalid characters"
+				return 1
+				;;
+			*[!a-zA-Z0-9.-]*)
+				_log "ERROR: Invalid DOH_HOSTS: contains invalid characters"
+				return 1
+				;;
+		esac
+	done
+
+	# Validate PUBLIC_DNS (IP addresses)
+	for ip in $PUBLIC_DNS; do
+		case "$ip" in
+			*'$'*|*'`'*|*'|'*|*';'*|*'<'*|*'>'*)
+				_log "ERROR: Invalid IP: contains command injection patterns"
+				return 1
+				;;
+		esac
+		# Validate IPv4 format
+		case "$ip" in
+			*[!0-9.]*)
+				_log "ERROR: Invalid IP address: $ip"
+				return 1
+				;;
+		esac
+	done
+
+	# Validate interface names
+	for iface in "$HOST_IF" "$UPLINK_IF" "$TS_IF"; do
+		case "$iface" in
+			*'$'*|*'`'*|*'|'*|*';'*|*'<'*|*'>'*)
+				_log "ERROR: Invalid interface name: contains command injection patterns"
+				return 1
+				;;
+		esac
+		# Only allow alphanumeric and underscores
+		case "$iface" in
+			*[!a-zA-Z0-9_]*)
+				_log "ERROR: Invalid interface name: $iface"
+				return 1
+				;;
+		esac
+	done
+
+	return 0
+}
+
 [ -f /opt/gateway-agent/exit.env ] && . /opt/gateway-agent/exit.env
 [ -f /opt/gateway-agent/tailscale.env ] && . /opt/gateway-agent/tailscale.env
+
+# Run validation after sourcing env files
+if ! _validate_env_vars; then
+ logger -t deeporc-routing "FATAL: Environment validation failed"
+ echo "FATAL: Environment validation failed" >&2
+ exit 1
+fi
 
 WG_SUBNET="${WG_SUBNET:-10.64.5.0/24}"
 WG_GW="${WG_GW:-10.64.5.1}"
@@ -34,8 +115,32 @@ EXIT_MTU="${EXIT_MTU:-1420}"
 
 _log() { logger -t deeporc-routing "$*" 2>/dev/null || echo "deeporc-routing: $*"; }
 
+# Validate hostname before using it in DNS lookup
+_validate_hostname_for_lookup() {
+	host="$1"
+	# Check for command injection
+	case "$host" in
+		*'$'*|*'`'*|*'|'*|*';'*|*'<'*|*'>'*)
+			_log "ERROR: Invalid hostname for lookup: contains command injection patterns"
+			return 1
+			;;
+	esac
+	# Only allow alphanumeric, dots, hyphens, underscores
+	case "$host" in
+		*[!a-zA-Z0-9.-]*)
+			_log "ERROR: Invalid hostname for lookup: contains invalid characters"
+			return 1
+			;;
+	esac
+	return 0
+}
+
 _host_ipv4() {
 	host="$1"
+	# Validate hostname before DNS lookup
+	if ! _validate_hostname_for_lookup "$host"; then
+		return 1
+	fi
 	case "$host" in
 		*[!0-9.]*)
 			getent ahostsv4 "$host" 2>/dev/null | awk '{print $1}' | sort -u

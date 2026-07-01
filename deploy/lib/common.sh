@@ -10,6 +10,319 @@ warn() {
   printf '!! %s\n' "$*" >&2
 }
 
+validate_url() {
+  local url="$1"
+  local name="$2"
+  
+  # Check if URL starts with http:// or https://
+  if ! echo "$url" | grep -qE '^https?://'; then
+    echo "Invalid $name: must start with http:// or https://" >&2
+    return 1
+  fi
+  
+  # Extract hostname from URL
+  local host
+  host=$(echo "$url" | sed -E 's|^https?://||' | sed -E 's|/.*||' | sed -E 's|:[0-9]+$||')
+  
+  # Validate hostname format (no commands, special chars except - and .)
+  if ! echo "$host" | grep -qE '^[a-zA-Z0-9]([a-zA-Z0-9.-]*[a-zA-Z0-9])?$'; then
+    echo "Invalid $name: invalid hostname format" >&2
+    return 1
+  fi
+  
+  # Check for command injection patterns
+  if echo "$url" | grep -qE '[\$\`|;&<>\n]'; then
+    echo "Invalid $name: potential command injection detected" >&2
+    return 1
+  fi
+  
+  return 0
+}
+
+validate_domain() {
+  local domain="$1"
+  local name="$2"
+  
+  # Validate domain format
+  if ! echo "$domain" | grep -qE '^[a-zA-Z0-9]([a-zA-Z0-9.-]*[a-zA-Z0-9])?$'; then
+    echo "Invalid $name: invalid domain format" >&2
+    return 1
+  fi
+  
+  # Check for command injection patterns
+  if echo "$domain" | grep -qE '[\$\`|;&<>\n]'; then
+    echo "Invalid $name: potential command injection detected" >&2
+    return 1
+  fi
+  
+  return 0
+}
+
+validate_port() {
+  local port="$1"
+  local name="$2"
+  
+  # Validate port is a number
+  if ! echo "$port" | grep -qE '^[0-9]+$'; then
+    echo "Invalid $name: must be a number" >&2
+    return 1
+  fi
+  
+  # Validate port range
+  if [ "$port" -lt 1 ] || [ "$port" -gt 65535 ]; then
+    echo "Invalid $name: must be between 1 and 65535" >&2
+    return 1
+  fi
+  
+  return 0
+}
+
+validate_ip_or_domain() {
+  local value="$1"
+  local name="$2"
+  
+  # Check if it's an IP address
+  if echo "$value" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$'; then
+    # Validate each octet
+    local IFS='.'
+    set -- $value
+    if [ $# -ne 4 ]; then
+      echo "Invalid $name: invalid IP address format" >&2
+      return 1
+    fi
+    for octet in "$1" "$2" "$3" "$4"; do
+      if [ "$octet" -lt 0 ] || [ "$octet" -gt 255 ] 2>/dev/null; then
+        echo "Invalid $name: IP octet must be 0-255" >&2
+        return 1
+      fi
+    done
+    return 0
+  fi
+  
+  # Otherwise validate as domain
+  validate_domain "$value" "$name"
+}
+
+validate_path() {
+  local path="$1"
+  local name="$2"
+  
+  # Check for command injection patterns
+  if echo "$path" | grep -qE '[\$\`|;&<>\n]'; then
+    echo "Invalid $name: potential command injection detected" >&2
+    return 1
+  fi
+  
+  # Check for relative path traversal
+  if echo "$path" | grep -qE '\.\./|\.\.'; then
+    echo "Invalid $name: relative path traversal detected" >&2
+    return 1
+  fi
+  
+  return 0
+}
+
+validate_hostname() {
+  local hostname="$1"
+  local name="$2"
+  
+  # Validate hostname format (RFC 1123)
+  if ! echo "$hostname" | grep -qE '^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$'; then
+    echo "Invalid $name: invalid hostname format" >&2
+    return 1
+  fi
+  
+  # Check for command injection
+  if echo "$hostname" | grep -qE '[\$\`|;&<>\n]'; then
+    echo "Invalid $name: potential command injection detected" >&2
+    return 1
+  fi
+  
+  # Length check
+  if [ ${#hostname} -gt 253 ]; then
+    echo "Invalid $name: hostname too long (max 253 chars)" >&2
+    return 1
+  fi
+  
+  return 0
+}
+
+validate_environment_vars() {
+  local env_file="$1"
+  
+  # Source the environment file
+  # shellcheck disable=SC1090
+  set -a
+  # shellcheck disable=SC1091
+  source "$env_file"
+  set +a
+  
+  local errors=0
+  
+  # Validate URLs
+  if [ -n "${HEADSCALE_URL:-}" ]; then
+    if ! validate_url "$HEADSCALE_URL" "HEADSCALE_URL"; then
+      errors=$((errors + 1))
+    fi
+  fi
+  
+  if [ -n "${CP_BASE_URL:-}" ]; then
+    if ! validate_url "$CP_BASE_URL" "CP_BASE_URL"; then
+      errors=$((errors + 1))
+    fi
+  fi
+  
+  if [ -n "${CP_DOMAIN:-}" ]; then
+    if ! validate_domain "$CP_DOMAIN" "CP_DOMAIN"; then
+      errors=$((errors + 1))
+    fi
+  fi
+  
+  if [ -n "${DOMAIN:-}" ]; then
+    if ! validate_domain "$DOMAIN" "DOMAIN"; then
+      errors=$((errors + 1))
+    fi
+  fi
+  
+  if [ -n "${BASE_DOMAIN:-}" ]; then
+    if ! validate_domain "$BASE_DOMAIN" "BASE_DOMAIN"; then
+      errors=$((errors + 1))
+    fi
+  fi
+  
+  if [ -n "${SERVICE_HOST:-}" ]; then
+    if ! validate_hostname "$SERVICE_HOST" "SERVICE_HOST"; then
+      errors=$((errors + 1))
+    fi
+  fi
+  
+  # Validate ports
+  if [ -n "${PORT_POOL_START:-}" ]; then
+    if ! validate_port "$PORT_POOL_START" "PORT_POOL_START"; then
+      errors=$((errors + 1))
+    fi
+  fi
+  
+  if [ -n "${PORT_POOL_END:-}" ]; then
+    if ! validate_port "$PORT_POOL_END" "PORT_POOL_END"; then
+      errors=$((errors + 1))
+    fi
+  fi
+  
+  # Validate IPs
+  if [ -n "${HOST_PUBLIC_IP:-}" ]; then
+    if ! validate_ip_or_domain "$HOST_PUBLIC_IP" "HOST_PUBLIC_IP"; then
+      errors=$((errors + 1))
+    fi
+  fi
+  
+  if [ -n "${ORCH_HOST_IP:-}" ]; then
+    if ! validate_ip_or_domain "$ORCH_HOST_IP" "ORCH_HOST_IP"; then
+      errors=$((errors + 1))
+    fi
+  fi
+  
+  if [ "$errors" -gt 0 ]; then
+    echo "Validation failed with $errors error(s)" >&2
+    return 1
+  fi
+  
+  return 0
+}
+
+validate_worker_env_vars() {
+  local env_file="$1"
+  
+  # Source the environment file
+  # shellcheck disable=SC1090
+  set -a
+  # shellcheck disable=SC1091
+  source "$env_file"
+  set +a
+  
+  local errors=0
+  
+  # Validate URLs
+  if [ -n "${HEADSCALE_URL:-}" ]; then
+    if ! validate_url "$HEADSCALE_URL" "HEADSCALE_URL"; then
+      errors=$((errors + 1))
+    fi
+  fi
+  
+  if [ -n "${CP_DOMAIN:-}" ]; then
+    if ! validate_domain "$CP_DOMAIN" "CP_DOMAIN"; then
+      errors=$((errors + 1))
+    fi
+  fi
+  
+  if [ -n "${CP_API_URL:-}" ]; then
+    if ! validate_url "$CP_API_URL" "CP_API_URL"; then
+      errors=$((errors + 1))
+    fi
+  fi
+  
+  # Validate ports
+  if [ -n "${PORT_POOL_START:-}" ]; then
+    if ! validate_port "$PORT_POOL_START" "PORT_POOL_START"; then
+      errors=$((errors + 1))
+    fi
+  fi
+  
+  if [ -n "${PORT_POOL_END:-}" ]; then
+    if ! validate_port "$PORT_POOL_END" "PORT_POOL_END"; then
+      errors=$((errors + 1))
+    fi
+  fi
+  
+  # Validate IPs
+  if [ -n "${HOST_PUBLIC_IP:-}" ]; then
+    if ! validate_ip_or_domain "$HOST_PUBLIC_IP" "HOST_PUBLIC_IP"; then
+      errors=$((errors + 1))
+    fi
+  fi
+  
+  if [ -n "${ORCH_HOST_IP:-}" ]; then
+    if ! validate_ip_or_domain "$ORCH_HOST_IP" "ORCH_HOST_IP"; then
+      errors=$((errors + 1))
+    fi
+  fi
+  
+  # Validate hostname formats
+  if [ -n "${TAILSCALE_HOSTNAME:-}" ]; then
+    if ! validate_hostname "$TAILSCALE_HOSTNAME" "TAILSCALE_HOSTNAME"; then
+      errors=$((errors + 1))
+    fi
+  fi
+  
+  # Validate path formats for repos
+  if [ -n "${GIT_REPO:-}" ]; then
+    # Check for command injection
+    if echo "$GIT_REPO" | grep -qE '[\$\`|;&<>\n]'; then
+      echo "Invalid GIT_REPO: potential command injection detected" >&2
+      errors=$((errors + 1))
+    fi
+    # Allow git URLs (git@, https://, http://)
+    if ! echo "$GIT_REPO" | grep -qE '^(git@|https://|http://|file://)'; then
+      echo "Invalid GIT_REPO: must be a valid git URL" >&2
+      errors=$((errors + 1))
+    fi
+  fi
+  
+  if [ -n "${GIT_REF:-}" ]; then
+    if echo "$GIT_REF" | grep -qE '[\$\`|;&<>\n]'; then
+      echo "Invalid GIT_REF: potential command injection detected" >&2
+      errors=$((errors + 1))
+    fi
+  fi
+  
+  if [ "$errors" -gt 0 ]; then
+    echo "Worker validation failed with $errors error(s)" >&2
+    return 1
+  fi
+  
+  return 0
+}
+
 wait_for_apt() {
   local timeout="${1:-600}"
   local elapsed=0
@@ -197,6 +510,12 @@ load_host_env() {
   set -a
   source "$env_file"
   set +a
+
+  # Validate environment variables for security
+  if ! validate_environment_vars "$env_file"; then
+    echo "Environment variable validation failed" >&2
+    exit 1
+  fi
 
   : "${APP_DIR:=/opt/deeporc}"
   resolve_host_domains
@@ -403,6 +722,12 @@ load_worker_env() {
   set -a
   source "$env_file"
   set +a
+
+  # Validate environment variables for security
+  if ! validate_worker_env_vars "$env_file"; then
+    echo "Environment variable validation failed" >&2
+    exit 1
+  fi
 
   : "${WORKER_NAME:?Set WORKER_NAME in worker env}"
   : "${APP_DIR:=/opt/deeporc-worker}"

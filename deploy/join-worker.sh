@@ -17,6 +17,39 @@ for var in CP_BASE_URL ENROLL_TOKEN TAILSCALE_AUTHKEY WORKER_NAME WORKER_DISPLAY
   require_env "$var"
 done
 
+# Validate URL format and prevent command injection
+validate_url() {
+  local url="$1"
+  local name="$2"
+  
+  # Check for command injection patterns
+  if echo "$url" | grep -qE '[\$\`|;&<>\n]'; then
+    echo "Invalid $name: potential command injection detected" >&2
+    exit 1
+  fi
+  
+  # Check if URL starts with http:// or https://
+  if ! echo "$url" | grep -qE '^https?://'; then
+    echo "Invalid $name: must start with http:// or https://" >&2
+    exit 1
+  fi
+  
+  # Extract hostname from URL
+  local host
+  host=$(echo "$url" | sed -E 's|^https?://||' | sed -E 's|/.*||' | sed -E 's|:[0-9]+$||')
+  
+  # Validate hostname format (no command injection, proper hostname)
+  if ! echo "$host" | grep -qE '^[a-zA-Z0-9]([a-zA-Z0-9.-]*[a-zA-Z0-9])?$'; then
+    echo "Invalid $name: invalid hostname format" >&2
+    exit 1
+  fi
+  
+  return 0
+}
+
+# Validate URLs before using them
+validate_url "$CP_BASE_URL" "CP_BASE_URL"
+
 if [[ "${EUID}" -ne 0 ]]; then
   echo "Run as root (the enrollment command wraps this script with sudo)." >&2
   exit 1
