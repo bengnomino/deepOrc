@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block main_class %}container logs-container{% endblock %}
+{% block content %}
+<header class="page-hero">
+  <div>
+    <p class="eyebrow">Control plane</p>
+    <h1>Logs</h1>
+  </div>
+  <form method="get" action="/orchestrator/ui/logs" class="log-filter">
+    <label class="field-label compact-field">
+      Service
+      <select name="unit" class="text-input">
+        {% for key, service in units.items() %}
+        <option value="{{ key }}" {% if key == unit %}selected{% endif %}>
+          {% if key == "all" %}All services{% else %}{{ service }}{% endif %}
+        </option>
+        {% endfor %}
+      </select>
+    </label>
+    <label class="field-label compact-field">
+      Lines
+      <select name="limit" class="text-input">
+        {% for option in limits %}
+        <option value="{{ option }}" {% if option == limit %}selected{% endif %}>{{ option }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <button type="submit" class="btn btn-glow">Refresh</button>
+  </form>
+</header>
+
+{% if flash_error %}
+<div class="alert error">{{ flash_error }}</div>
+{% endif %}
+
+<section class="card card-glass log-panel">
+  <div class="card-head row-head">
+    <h2>{{ unit_label }}</h2>
+    <span class="status-pill">{{ lines|length }} lines</span>
+  </div>
+  {% if lines %}
+  <pre class="log-output">{% for line in lines %}{{ line }}
+{% endfor %}</pre>
+  {% else %}
+  <div class="empty-state">
+    <p class="muted">No log lines found.</p>
+  </div>
+  {% endif %}
+</section>
+{% endblock %}

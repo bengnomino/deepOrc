@@ -31,7 +31,7 @@ validate_url() {
   fi
   
   # Check for command injection patterns
-  if echo "$url" | grep -qE '[\$\`|;&<>\n]'; then
+  if echo "$url" | grep -qE '[\$\`|;&<>]'; then
     echo "Invalid $name: potential command injection detected" >&2
     return 1
   fi
@@ -50,7 +50,7 @@ validate_domain() {
   fi
   
   # Check for command injection patterns
-  if echo "$domain" | grep -qE '[\$\`|;&<>\n]'; then
+  if echo "$domain" | grep -qE '[\$\`|;&<>]'; then
     echo "Invalid $name: potential command injection detected" >&2
     return 1
   fi
@@ -108,7 +108,7 @@ validate_path() {
   local name="$2"
   
   # Check for command injection patterns
-  if echo "$path" | grep -qE '[\$\`|;&<>\n]'; then
+  if echo "$path" | grep -qE '[\$\`|;&<>]'; then
     echo "Invalid $name: potential command injection detected" >&2
     return 1
   fi
@@ -133,7 +133,7 @@ validate_hostname() {
   fi
   
   # Check for command injection
-  if echo "$hostname" | grep -qE '[\$\`|;&<>\n]'; then
+  if echo "$hostname" | grep -qE '[\$\`|;&<>]'; then
     echo "Invalid $name: potential command injection detected" >&2
     return 1
   fi
@@ -297,7 +297,7 @@ validate_worker_env_vars() {
   # Validate path formats for repos
   if [ -n "${GIT_REPO:-}" ]; then
     # Check for command injection
-    if echo "$GIT_REPO" | grep -qE '[\$\`|;&<>\n]'; then
+    if echo "$GIT_REPO" | grep -qE '[\$\`|;&<>]'; then
       echo "Invalid GIT_REPO: potential command injection detected" >&2
       errors=$((errors + 1))
     fi
@@ -309,7 +309,7 @@ validate_worker_env_vars() {
   fi
   
   if [ -n "${GIT_REF:-}" ]; then
-    if echo "$GIT_REF" | grep -qE '[\$\`|;&<>\n]'; then
+    if echo "$GIT_REF" | grep -qE '[\$\`|;&<>]'; then
       echo "Invalid GIT_REF: potential command injection detected" >&2
       errors=$((errors + 1))
     fi

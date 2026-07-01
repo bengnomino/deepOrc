@@ -9,7 +9,8 @@ source "$SCRIPT_DIR/lib/common.sh"
 
 require_root
 
-APP_DIR="${APP_DIR:-/opt/deeporc}"
+CP_APP_DIR="${APP_DIR:-/opt/deeporc}"
+DEFAULT_WORKER_APP_DIR="${WORKER_APP_DIR:-/opt/deeporc-worker}"
 
 WORKERS_FILE="${1:-$SCRIPT_DIR/hosts/workers.list}"
 if [[ ! -f "$WORKERS_FILE" ]]; then
@@ -26,15 +27,23 @@ updated=0
 failed=0
 while IFS= read -r line || [[ -n "$line" ]]; do
   line="${line%%#*}"
+  # Parse line for APP_DIR (format: root@host APP_DIR=path) before space removal.
+  worker_app_dir="$DEFAULT_WORKER_APP_DIR"
+  if [[ "$line" == *" APP_DIR="* ]]; then
+    worker_app_dir="${line##* APP_DIR=}"
+    line="${line%% APP_DIR=*}"
+  fi
+  # Remove remaining spaces
   line="${line// /}"
   [[ -z "$line" ]] && continue
 
   log "Updating worker at ${line}"
-  if ssh -n "${SSH_OPTS[@]}" "$line" 'APP_DIR="${APP_DIR:-/opt/deeporc-worker}"; test -x "$APP_DIR/deploy/update-worker.sh" && "$APP_DIR/deploy/update-worker.sh"'; then
-    if [[ -f "${APP_DIR:-/opt/deeporc}/orchestrator/services/host_stats.py" ]]; then
+  printf -v remote_app_dir '%q' "$worker_app_dir"
+  if ssh -n "${SSH_OPTS[@]}" "$line" "APP_DIR=${remote_app_dir}; test -x \"\$APP_DIR/deploy/update-worker.sh\" && \"\$APP_DIR/deploy/update-worker.sh\""; then
+    if [[ -f "${CP_APP_DIR}/orchestrator/services/host_stats.py" ]]; then
       scp -q "${SSH_OPTS[@]}" \
-        "${APP_DIR:-/opt/deeporc}/orchestrator/services/host_stats.py" \
-        "${line}:/opt/deeporc-worker/orchestrator/services/host_stats.py" 2>/dev/null || true
+        "${CP_APP_DIR}/orchestrator/services/host_stats.py" \
+        "${line}:${worker_app_dir}/orchestrator/services/host_stats.py" 2>/dev/null || true
       ssh -n "${SSH_OPTS[@]}" "$line" "systemctl restart worker-heartbeat.service" 2>/dev/null || true
     fi
     updated=$((updated + 1))

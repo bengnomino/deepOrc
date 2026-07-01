@@ -36,6 +36,18 @@ def test_resolve_subdomain_fqdn():
     assert out == "orchtest.harlock.network"
 
 
+def test_validate_domain_allows_common_domains_with_n():
+    out = _bash(
+        """
+        source deploy/lib/common.sh
+        validate_domain harlock.network BASE_DOMAIN
+        validate_url https://deeporc.harlock.network HEADSCALE_URL
+        echo ok
+        """
+    )
+    assert out == "ok"
+
+
 def test_derive_tls_sites_subdomain():
     assert (
         _bash(

@@ -1,5 +1,5 @@
 [Unit]
-Description=Orchtest worker heartbeat (stats → control plane)
+Description=deepOrc worker heartbeat (stats to control plane)
 After=network-online.target tailscaled.service
 Wants=network-online.target
 

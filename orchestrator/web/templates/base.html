@@ -20,10 +20,11 @@
     </a>
     <nav>
       <a href="/orchestrator/ui" class="nav-link">Dashboard</a>
+      <a href="/orchestrator/ui/logs" class="nav-link">Logs</a>
       <a href="/orchestrator/docs" target="_blank" class="nav-link">API</a>
     </nav>
   </header>
-  <main class="container">
+  <main class="{% block main_class %}container{% endblock %}">
     {% block content %}{% endblock %}
   </main>
   {% block scripts %}{% endblock %}

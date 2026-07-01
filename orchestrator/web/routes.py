@@ -3,6 +3,7 @@
 import io
 import json
 import logging
+import subprocess
 import zipfile
 from pathlib import Path
 from urllib.parse import quote
@@ -68,6 +69,62 @@ def _gateway_detail_url(
 router = APIRouter(tags=["webui"])
 
 DEPLOY_DIR = Path(__file__).resolve().parents[2] / "deploy"
+LOG_UNITS = {
+    "orchestrator": "orchestrator.service",
+    "caddy": "caddy.service",
+    "headscale": "headscale.service",
+    "all": None,
+}
+LOG_LIMITS = {100, 200, 500}
+
+
+def _normalise_log_unit(unit: str | None) -> str:
+    key = (unit or "orchestrator").strip().lower()
+    if key not in LOG_UNITS:
+        return "orchestrator"
+    return key
+
+
+def _normalise_log_limit(limit: int | str | None) -> int:
+    try:
+        value = int(limit) if limit is not None else 200
+    except (TypeError, ValueError):
+        value = 200
+    if value in LOG_LIMITS:
+        return value
+    return 200
+
+
+def _read_journal_lines(unit_key: str, limit: int) -> tuple[list[str], str | None]:
+    command = [
+        "journalctl",
+        "-n",
+        str(limit),
+        "--no-pager",
+        "--output",
+        "short-iso",
+    ]
+    unit = LOG_UNITS[unit_key]
+    if unit:
+        command[1:1] = ["-u", unit]
+    try:
+        result = subprocess.run(
+            command,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=8,
+        )
+    except FileNotFoundError:
+        return [], "journalctl is not available on this host"
+    except subprocess.TimeoutExpired:
+        return [], "Timed out reading system journal"
+
+    lines = result.stdout.splitlines()
+    if result.returncode != 0 and not lines:
+        error = result.stderr.strip() or f"journalctl exited with {result.returncode}"
+        return [], error
+    return lines[-limit:], None
 
 
 def _maybe_enqueue_provisioning(
@@ -262,6 +319,31 @@ def dashboard(
             "exit_node_tag": settings.headscale_exit_node_tag,
             "login_server": settings.headscale_url,
             "title": "Dashboard",
+        },
+    )
+
+
+@router.get("/logs", response_class=HTMLResponse)
+def logs_page(
+    request: Request,
+    unit: str = "orchestrator",
+    limit: str = "200",
+) -> HTMLResponse:
+    unit_key = _normalise_log_unit(unit)
+    line_limit = _normalise_log_limit(limit)
+    lines, error = _read_journal_lines(unit_key, line_limit)
+    return templates.TemplateResponse(
+        request,
+        "logs.html",
+        {
+            "title": "Logs",
+            "unit": unit_key,
+            "unit_label": "All services" if unit_key == "all" else LOG_UNITS[unit_key],
+            "units": LOG_UNITS,
+            "limit": line_limit,
+            "limits": sorted(LOG_LIMITS),
+            "lines": lines,
+            "flash_error": error,
         },
     )
 

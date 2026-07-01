@@ -23,7 +23,7 @@ validate_url() {
   local name="$2"
   
   # Check for command injection patterns
-  if echo "$url" | grep -qE '[\$\`|;&<>\n]'; then
+  if echo "$url" | grep -qE '[\$\`|;&<>]'; then
     echo "Invalid $name: potential command injection detected" >&2
     exit 1
   fi
