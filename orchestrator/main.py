@@ -149,4 +149,5 @@ def cli() -> None:
 
 
 if __name__ == "__main__":
+    logger.info("Starting orchestrator application")
     cli()

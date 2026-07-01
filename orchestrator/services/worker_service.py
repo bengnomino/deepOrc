@@ -1,5 +1,6 @@
 """Worker selection, registration, and heartbeat."""
 
+import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
@@ -14,6 +15,8 @@ from orchestrator.models.worker_enrollment import WorkerEnrollment
 from orchestrator.repositories.worker_enrollment_repo import WorkerEnrollmentRepository
 from orchestrator.repositories.worker_repo import WorkerRepository
 from orchestrator.services.host_stats import HostStats
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -138,6 +141,8 @@ class WorkerService:
         if self._workers.get_by_name(name):
             raise ValueError(f"Worker {name} already exists")
 
+        logger.info("Creating new worker registration: %s", name)
+
         token = generate_token()
         worker = Worker(
             name=name,
@@ -159,15 +164,19 @@ class WorkerService:
         )
         self._workers.create(worker)
         self._session.commit()
+        logger.info("Worker registration created successfully: %s", name)
         return RegisterWorkerResult(worker=worker, worker_token=token)
 
     def authenticate_worker(self, worker_id: int, token: str) -> Worker:
         worker = self.get_worker(worker_id)
         if not verify_token(token, worker.worker_token_hash):
+            logger.warning("Failed worker authentication attempt for worker ID: %d", worker_id)
             raise ValueError("Invalid worker token")
+        logger.info("Worker authenticated successfully: %d", worker_id)
         return worker
 
     def record_heartbeat(self, worker: Worker, stats: HostStats) -> None:
+        logger.info("Recording heartbeat for worker: %s (ID: %d)", worker.name, worker.id)
         self._workers.update_stats(
             worker,
             cpu_percent=stats.cpu_percent,
@@ -178,6 +187,7 @@ class WorkerService:
             network_tx_bps=stats.network_tx_bytes_per_sec,
         )
         self._session.commit()
+        logger.info("Heartbeat recorded successfully for worker: %s (ID: %d)", worker.name, worker.id)
 
     @staticmethod
     def _utc_dt(value: datetime) -> datetime:
@@ -225,14 +235,17 @@ class WorkerService:
         raise ValueError("No available worker name")
 
     def create_enrollment(self) -> EnrollWorkerResult:
+        logger.info("Starting worker enrollment process")
         existing = self._enrollments.get_latest_active()
         if existing:
             if existing.enroll_token_enc and existing.headscale_auth_key_enc:
+                logger.info("Returning existing enrollment for worker: %s", existing.name)
                 return self._enrollment_result(
                     existing,
                     decrypt_value(existing.enroll_token_enc),
                     decrypt_value(existing.headscale_auth_key_enc),
                 )
+            logger.info("Refreshing existing enrollment for worker: %s", existing.name)
             return self._refresh_enrollment(existing)
 
         slug, display_name = self._next_worker_identity()
@@ -242,6 +255,7 @@ class WorkerService:
         try:
             preauth = create_worker_preauth_key()
         except HeadscaleError as exc:
+            logger.error("Failed to create Tailscale auth key: %s", exc)
             raise ValueError(f"Failed to create Tailscale auth key: {exc}") from exc
 
         token = generate_token()
@@ -257,6 +271,7 @@ class WorkerService:
         )
         self._enrollments.create(enrollment)
         self._session.commit()
+        logger.info("Worker enrollment created successfully for worker: %s", slug)
         return self._enrollment_result(enrollment, token, preauth.key)
 
     def _enrollment_result(
@@ -317,14 +332,19 @@ class WorkerService:
         )
 
     def complete_enrollment(self, enroll_token: str, request: CompleteEnrollmentRequest) -> RegisterWorkerResult:
+        logger.info("Starting worker enrollment completion process")
         enrollment = self._enrollments.get_by_token_hash(hash_token(enroll_token))
         if not enrollment or not verify_token(enroll_token, enrollment.token_hash):
+            logger.warning("Failed enrollment completion - invalid enrollment token")
             raise ValueError("Invalid enrollment token")
         if enrollment.used_at is not None:
+            logger.warning("Failed enrollment completion - enrollment token already used: %s", enrollment.name)
             raise ValueError("Enrollment token already used")
         if self._utc_dt(enrollment.expires_at) <= datetime.now(UTC):
+            logger.warning("Failed enrollment completion - enrollment token expired: %s", enrollment.name)
             raise ValueError("Enrollment token expired")
         if self._workers.get_by_name(enrollment.name):
+            logger.warning("Failed enrollment completion - worker already exists: %s", enrollment.name)
             raise ValueError(f"Worker {enrollment.name} already exists")
 
         incus_url = f"https://{request.tailscale_ip.strip()}:8443"
@@ -336,11 +356,13 @@ class WorkerService:
                 self._settings.data_dir,
             )
         except IncusRemoteError as exc:
+            logger.error("Incus remote setup failed for worker %s: %s", enrollment.name, exc)
             raise ValueError(f"Incus remote setup failed: {exc}") from exc
 
         token = generate_token()
         public_ip = request.public_ip.strip()
         if not public_ip:
+            logger.error("Enrollment completion failed - public IP required for worker %s", enrollment.name)
             raise ValueError("Worker public IP is required")
         worker = Worker(
             name=enrollment.name,
@@ -365,4 +387,5 @@ class WorkerService:
         enrollment.used_at = datetime.now(UTC)
         enrollment.worker_id = worker.id
         self._session.commit()
+        logger.info("Worker enrollment completed successfully for worker: %s", enrollment.name)
         return RegisterWorkerResult(worker=worker, worker_token=token)
